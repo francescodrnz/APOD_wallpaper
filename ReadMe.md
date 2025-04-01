@@ -1,7 +1,7 @@
 # NASA APOD Wallpaper Downloader
 
 This script downloads NASA's Astronomy Picture of the Day (APOD) and sets it as the desktop wallpaper on Windows.
-If the image of the day is not available, it randomly selects a random date between June 16, 1995, and yesterday.
+If the image of the day is not available, it randomly selects a date between June 16, 1995, and yesterday.
 
 ## Requirements
 - **Windows** (required to set the wallpaper automatically)
