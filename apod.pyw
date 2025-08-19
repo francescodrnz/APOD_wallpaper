@@ -3,14 +3,17 @@ import importlib
 
 # Controlla e installa le librerie mancanti
 def install_dependencies():
-    required_packages = ["requests", "pillow"]
-    for package in required_packages:
+    required_packages = {
+        "requests": "requests",
+        "pillow": "PIL"
+    }
+    for pip_name, import_name in required_packages.items():
         try:
-            importlib.import_module(package)
+            importlib.import_module(import_name)
         except ImportError:
-            print(f"Installazione di {package}...")
-            subprocess.check_call(["python", "-m", "pip", "install", package])
-            importlib.import_module(package)  # re-importa dopo l’installazione
+            print(f"Installazione di {pip_name}...")
+            subprocess.check_call(["python", "-m", "pip", "install", pip_name])
+            importlib.import_module(import_name)  # re-importa dopo l’installazione
 
 # Esegui subito il controllo
 install_dependencies()
@@ -20,7 +23,7 @@ import os
 import ctypes
 import shutil
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 # Import librerie esterne (già garantite dall'install_dependencies)
 import requests
@@ -74,7 +77,7 @@ def main():
     data = {}
     
     start_date = datetime(1995, 6, 16)
-    end_date = datetime.utcnow() - timedelta(days=1)
+    end_date = datetime.now(UTC) - timedelta(days=1)
     
     while attempt < max_retries:
         date = random_date(start_date, end_date) if attempt > 0 else None
