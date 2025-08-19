@@ -1,23 +1,30 @@
-import os
-import ctypes
-import shutil
-import requests
-import random
 import subprocess
-from PIL import Image
-from datetime import datetime, timedelta
+import importlib
 
 # Controlla e installa le librerie mancanti
 def install_dependencies():
     required_packages = ["requests", "pillow"]
     for package in required_packages:
         try:
-            __import__(package)
+            importlib.import_module(package)
         except ImportError:
             print(f"Installazione di {package}...")
             subprocess.check_call(["python", "-m", "pip", "install", package])
+            importlib.import_module(package)  # re-importa dopo l’installazione
 
+# Esegui subito il controllo
 install_dependencies()
+
+# Import standard library (non serve installarle)
+import os
+import ctypes
+import shutil
+import random
+from datetime import datetime, timedelta
+
+# Import librerie esterne (già garantite dall'install_dependencies)
+import requests
+from PIL import Image
 
 def get_apod_image(api_key, date=None):
     url = f"https://api.nasa.gov/planetary/apod?api_key={api_key}&hd=True"
