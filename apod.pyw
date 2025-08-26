@@ -116,7 +116,7 @@ def main():
 
     print("[INFO] Avvio script APOD wallpaper...")
     start_date = datetime(1995, 6, 16)
-    end_date = datetime.now(UTC) - timedelta(days=1)
+    end_date = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
 
     max_retries = 5
     attempt = 0
