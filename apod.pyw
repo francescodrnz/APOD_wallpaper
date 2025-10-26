@@ -1,140 +1,170 @@
 import subprocess
 import importlib
+import os
+import ctypes
+import random
+from datetime import datetime, timedelta, UTC
+import winreg
+from pathlib import Path
+import textwrap
 
 # Controlla e installa le librerie mancanti
 def install_dependencies():
-    required_packages = {
-        "requests": "requests",
-        "pillow": "PIL"
-    }
+    required_packages = {"requests": "requests", "pillow": "PIL"}
     for pip_name, import_name in required_packages.items():
         try:
             importlib.import_module(import_name)
         except ImportError:
             print(f"[INFO] Installazione di {pip_name}...")
             subprocess.check_call(["python", "-m", "pip", "install", pip_name])
-            importlib.import_module(import_name)
 
-# Esegui subito il controllo
 install_dependencies()
 
-# Import standard library
-import os
-import ctypes
-import random
-from datetime import datetime, timedelta, UTC
-import winreg
-
-# Import librerie esterne
 import requests
 from PIL import Image
 
-# Funzione per scaricare e impostare lo sfondo
-def download_and_set_wallpaper(image_url, folder_path):
-    print(f"[INFO] Download dell'immagine da {image_url}")
-    image_path = os.path.join(folder_path, "apod_wallpaper.jpg")
+# Costanti
+API_KEY = "DEMO_KEY" # INSERIRE LA PROPRIA API KEY, OTTENIBILE DA https://api.nasa.gov/
+START_DATE = datetime(1995, 6, 16)
+MAX_RETRIES = 5
+TIMEOUT = 10
 
+def random_date(start_date, end_date):
+    """Genera una data casuale nel range specificato."""
+    delta = (end_date - start_date).days
+    random_days = random.randint(0, delta)
+    return (start_date + timedelta(days=random_days)).strftime('%Y-%m-%d')
+
+def get_apod_data(date=None):
+    """Ottiene i dati APOD da NASA API."""
+    url = f"https://api.nasa.gov/planetary/apod?api_key={API_KEY}&hd=True"
+    if date:
+        url += f"&date={date}"
+        print(f"[INFO] Richiesta APOD per {date}")
+    else:
+        print("[INFO] Richiesta APOD per oggi")
+    
     try:
-        response = requests.get(image_url, stream=True, timeout=15)
+        response = requests.get(url, timeout=TIMEOUT)
         response.raise_for_status()
-        with open(image_path, "wb") as file:
-            for chunk in response.iter_content(chunk_size=4096):
-                file.write(chunk)
-        print(f"[INFO] Immagine salvata in {image_path}")
+        data = response.json()
+        
+        # Verifica immediata se è un'immagine valida
+        if data.get("media_type") != "image" or "hdurl" not in data:
+            print(f"[WARN] APOD non valido (media_type: {data.get('media_type')})")
+            return None
+        
+        return data
+    except requests.exceptions.RequestException as e:
+        print(f"[ERRORE] Richiesta fallita: {e}")
+        return None
+
+def download_image(url, save_path):
+    """Download ottimizzato dell'immagine."""
+    try:
+        response = requests.get(url, stream=True, timeout=15)
+        response.raise_for_status()
+        
+        with open(save_path, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):  # Buffer più grande
+                if chunk:
+                    file.write(chunk)
+        
+        print(f"[INFO] Immagine salvata: {save_path}")
+        return True
     except Exception as e:
         print(f"[ERRORE] Download fallito: {e}")
-        return
+        return False
 
-    # Apri e ruota l'immagine se necessario
+def set_wallpaper(image_path):
+    """Imposta lo sfondo su Windows."""
     try:
-        image = Image.open(image_path)
-        #if image.height > image.width:
-        #    print("[INFO] Immagine verticale: ruoto di 90°")
-        #    image = image.transpose(Image.ROTATE_90)
-        #    image.save(image_path)
-    except Exception as e:
-        print(f"[ERRORE] Problema con l'immagine: {e}")
-        return
-
-    # Aggiorna il registro di Windows
-    try:
-        key = winreg.OpenKey(
+        # Aggiorna registro
+        with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
             r"Control Panel\Desktop",
             0,
             winreg.KEY_SET_VALUE
-        )
-        winreg.SetValueEx(key, "Wallpaper", 0, winreg.REG_SZ, image_path)
-        winreg.CloseKey(key)
-        print("[INFO] Registro aggiornato con il nuovo wallpaper")
-    except Exception as e:
-        print(f"[ERRORE] Impossibile aggiornare il registro: {e}")
-
-    # Imposta come sfondo e notifica Explorer
-    try:
+        ) as key:
+            winreg.SetValueEx(key, "Wallpaper", 0, winreg.REG_SZ, str(image_path))
+        
+        # Applica wallpaper
         SPI_SETDESKWALLPAPER = 20
         SPIF_UPDATEINIFILE = 0x01
         SPIF_SENDCHANGE = 0x02
         ctypes.windll.user32.SystemParametersInfoW(
-            SPI_SETDESKWALLPAPER, 0, image_path,
+            SPI_SETDESKWALLPAPER, 0, str(image_path),
             SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
         )
-        print("[INFO] Wallpaper applicato con successo ✅")
+        
+        print("[INFO] Wallpaper applicato ✅")
+        return True
     except Exception as e:
-        print(f"[ERRORE] Impossibile impostare lo sfondo: {e}")
+        print(f"[ERRORE] Impossibile impostare wallpaper: {e}")
+        return False
 
-# Funzione per ottenere i dati APOD
-def get_apod_image(api_key, date=None):
-    url = f"https://api.nasa.gov/planetary/apod?api_key={api_key}&hd=True"
-    if date:
-        url += f"&date={date}"
-        print(f"[INFO] Richiesta immagine APOD per la data {date}")
-    else:
-        print("[INFO] Richiesta immagine APOD per oggi")
-
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        print("[INFO] Risposta ricevuta correttamente da NASA API")
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"[ERRORE] Richiesta a NASA API fallita: {e}")
-        return {}
-
-# Funzione per generare una data casuale
-def random_date(start_date, end_date):
-    delta = end_date - start_date
-    random_days = random.randint(0, delta.days)
-    return (start_date + timedelta(days=random_days)).strftime('%Y-%m-%d')
-
-# Main
 def main():
-    api_key = "uSEGw3fuem0zi1Ks76NsilpRUtxXcTi1lEseL8P2"
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    folder_path = os.path.join(script_dir, "apod_images")
-    os.makedirs(folder_path, exist_ok=True)
-
     print("[INFO] Avvio script APOD wallpaper...")
-    start_date = datetime(1995, 6, 16)
+    
+    # Setup directory
+    folder_path = Path(__file__).parent / "apod_images"
+    folder_path.mkdir(exist_ok=True)
+    
+    # Pulisci file precedenti
+    for old_file in folder_path.glob("apod_*"):
+        try:
+            old_file.unlink()
+        except Exception:
+            pass  # Ignora errori di cancellazione
+    
+    # Calcola range date
     end_date = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
-
-    max_retries = 5
-    attempt = 0
-    data = {}
-
-    while attempt < max_retries:
-        date = random_date(start_date, end_date) if attempt > 0 else None
-        data = get_apod_image(api_key, date)
-        if "hdurl" in data:
-            break
-        attempt += 1
-        print(f"[WARN] Tentativo {attempt} fallito, riprovo...")
-
-    if "hdurl" in data:
-        print(f"[INFO] Titolo: {data.get('title', 'Sconosciuto')}")
-        download_and_set_wallpaper(data["hdurl"], folder_path)
-    else:
-        print("[ERRORE] Impossibile ottenere l'immagine APOD dopo 5 tentativi.")
+    
+    # Tenta di ottenere un'immagine valida
+    for attempt in range(1, MAX_RETRIES + 1):
+        date = random_date(START_DATE, end_date)
+        data = get_apod_data(date)
+        
+        if data and "hdurl" in data:
+            print(f"[INFO] Titolo: {data.get('title', 'Sconosciuto')}")
+            
+            # Crea nome file con la data
+            apod_date = data.get('date', 'unknown')
+            image_path = folder_path / f"apod_{apod_date}.jpg"
+            
+            # Download e imposta wallpaper
+            if download_image(data["hdurl"], image_path):
+                # Validazione base immagine (opzionale)
+                try:
+                    with Image.open(image_path) as img:
+                        img.verify()  # Verifica integrità
+                except Exception as e:
+                    print(f"[WARN] Immagine corrotta: {e}")
+                    continue
+                
+                if set_wallpaper(image_path):
+                    print(f"[SUCCESS] Completato in {attempt} tentativ{'o' if attempt == 1 else 'i'}")
+                    
+                    # Salva spiegazione in background (non blocca)
+                    try:
+                        explanation = data.get('explanation', 'Nessuna spiegazione disponibile')
+                        wrapped_explanation = textwrap.fill(explanation, width=80)
+                        txt_path = folder_path / f"apod_{apod_date}.txt"
+                        txt_path.write_text(
+                            f"Titolo: {data.get('title', 'Sconosciuto')}\n"
+                            f"Data: {apod_date}\n\n"
+                            f"{wrapped_explanation}",
+                            encoding='utf-8'
+                        )
+                    except Exception:
+                        pass  # Ignora errori, è secondario
+                    
+                    return
+        
+        if attempt < MAX_RETRIES:
+            print(f"[WARN] Tentativo {attempt}/{MAX_RETRIES} fallito, riprovo...")
+    
+    print("[ERRORE] Impossibile ottenere un'immagine APOD valida dopo 5 tentativi.")
 
 if __name__ == "__main__":
     main()
