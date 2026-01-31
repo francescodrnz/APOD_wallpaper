@@ -21,11 +21,11 @@ def install_dependencies():
 install_dependencies()
 
 import requests
-from PIL import Image
+from PIL import Image, ImageFilter, ImageEnhance
 
 # Costanti
-NASA_API_KEY = "uSEGw3fuem0zi1Ks76NsilpRUtxXcTi1lEseL8P2"
-UNSPLASH_API_KEY = "dNenSdAjlYgw74XkzItswjs46jqWs8T0XcwSV5ocKDU"
+NASA_API_KEY = "DEMO_KEY"
+UNSPLASH_API_KEY = "your_unsplash_key_here"
 START_DATE = datetime(1995, 6, 16)
 MAX_RETRIES = 3
 TIMEOUT = 10
@@ -116,7 +116,7 @@ def get_unsplash_image():
 
 def get_nasa_image_library():
     """Ottiene un'immagine dalla NASA Image Library."""
-    queries = ["galaxy", "nebula", "planet", "earth from space", "space station", "astronaut", "mars", "moon", "jupiter", "saturn"]
+    queries = ["galaxy", "nebula", "planet", "earth from space", "space station", "mars", "moon", "jupiter", "saturn"]
     query = random.choice(queries)
     
     try:
@@ -252,6 +252,54 @@ def set_wallpaper(image_path):
     except Exception as e:
         print(f"[ERRORE] Impossibile impostare wallpaper: {e}")
         return False
+        
+def update_windows_accent(image_path):
+    print("[INFO] Calcolo colore dominante (modalità Dark)...")
+    try:
+        with Image.open(image_path) as img:
+            # Resize aggressivo per leggere la media globale
+            img = img.resize((100, 100))
+            img = img.convert("RGB")
+            
+            # Ottieni i colori ordinati per frequenza (il più comune è il primo)
+            # maxcolors è alto per catturare tutto
+            colors = img.getcolors(10000) 
+            
+            if not colors:
+                return False
+
+            # Ordina per count decrescente (il colore più frequente vince)
+            colors.sort(key=lambda x: x[0], reverse=True)
+            
+            # Prendi il vincitore
+            best_color = colors[0][1]
+            r, g, b = best_color
+
+            # --- LOGICA SAFETY DARK ---
+            # Se il colore è troppo scuro (somma RGB < 80), Windows lo rifiuterà.
+            # Lo forziamo a un grigio scuro "tecnico" che Windows accetta.
+            if (r + g + b) < 80:
+                print(f"[INFO] Dominante troppo scura ({r},{g},{b}). Ajusting per Windows.")
+                r, g, b = 40, 40, 40 # Grigio antracite scuro (accettato da Windows)
+            
+            print(f"[INFO] Colore applicato: R={r} G={g} B={b}")
+
+            # Conversione DWORD (00BBGGRR)
+            accent_color_dword = (0 << 24) | (b << 16) | (g << 8) | r
+            
+            key_path = r"Software\Microsoft\Windows\DWM"
+            
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                winreg.SetValueEx(key, "AccentColor", 0, winreg.REG_DWORD, accent_color_dword)
+                winreg.SetValueEx(key, "ColorPrevalence", 0, winreg.REG_DWORD, 1) 
+                
+            # Forza refresh
+            ctypes.windll.user32.SystemParametersInfoW(20, 0, str(image_path), 3)
+            return True
+
+    except Exception as e:
+        print(f"[ERRORE] Cambio colore fallito: {e}")
+        return False
 
 def cleanup_old_files(folder_path, current_wallpaper, new_image_path, new_txt_path):
     """Pulisce i vecchi file preservando quello in uso e gli ultimi N."""
@@ -292,6 +340,83 @@ def cleanup_old_files(folder_path, current_wallpaper, new_image_path, new_txt_pa
     
     if deleted_count > 0:
         print(f"[INFO] Puliti {deleted_count} file vecchi (mantenuti ultimi {keep_recent})")
+
+def smart_resize_wallpaper(image_path):
+    """
+    Adatta l'immagine allo schermo applicando l'effetto 'Ambient Blur' 
+    sui bordi invece di tagliare il contenuto o mettere barre nere.
+    """
+    print("[INFO] Ottimizzazione composizione (Ambient Blur)...")
+    
+    # 1. Rileva risoluzione schermo reale
+    user32 = ctypes.windll.user32
+    screen_w = user32.GetSystemMetrics(0)
+    screen_h = user32.GetSystemMetrics(1)
+    target_ratio = screen_w / screen_h
+    
+    try:
+        with Image.open(image_path) as img:
+            img = img.convert("RGB")
+            orig_w, orig_h = img.size
+            img_ratio = orig_w / orig_h
+            
+            # Se l'aspect ratio è già simile (tolleranza 5%), non fare nulla
+            if abs(img_ratio - target_ratio) < 0.05:
+                print("[INFO] Aspect ratio già ottimale. Nessuna modifica.")
+                return
+
+            # 2. Crea la Canvas (Sfondo) 16:9
+            # Calcoliamo le dimensioni target basandoci sulla risoluzione schermo
+            # ma mantenendo la qualità dell'immagine originale se è superiore al 1080p
+            base_width = max(screen_w, orig_w)
+            base_height = int(base_width / target_ratio)
+            
+            canvas = Image.new('RGB', (base_width, base_height))
+
+            # 3. Genera Sfondo Sfocato (Fill)
+            # Resize coprendo tutta l'area (come fa windows di default)
+            bg_layer = img.copy()
+            
+            # Calcolo crop per riempimento
+            ratio_w = base_width / orig_w
+            ratio_h = base_height / orig_h
+            scale = max(ratio_w, ratio_h)
+            
+            bg_w = int(orig_w * scale)
+            bg_h = int(orig_h * scale)
+            bg_layer = bg_layer.resize((bg_w, bg_h), Image.Resampling.LANCZOS)
+            
+            # Centra il crop
+            left = (bg_w - base_width) // 2
+            top = (bg_h - base_height) // 2
+            bg_layer = bg_layer.crop((left, top, left + base_width, top + base_height))
+            
+            # Applica Blur e Scurisci
+            bg_layer = bg_layer.filter(ImageFilter.GaussianBlur(radius=50))
+            enhancer = ImageEnhance.Brightness(bg_layer)
+            bg_layer = enhancer.enhance(0.6) # 60% luminosità per far risaltare il centro
+            
+            # 4. Posiziona Immagine Originale (Fit) al centro
+            # Ricalcola scala per stare DENTRO la canvas
+            scale_fit = min(base_width / orig_w, base_height / orig_h)
+            fg_w = int(orig_w * scale_fit)
+            fg_h = int(orig_h * scale_fit)
+            
+            fg_layer = img.resize((fg_w, fg_h), Image.Resampling.LANCZOS)
+            
+            # Calcola posizione centrata
+            pos_x = (base_width - fg_w) // 2
+            pos_y = (base_height - fg_h) // 2
+            
+            # 5. Unisci e Salva
+            canvas.paste(bg_layer, (0, 0))
+            canvas.paste(fg_layer, (pos_x, pos_y))
+            
+            canvas.save(image_path, quality=95)
+            print(f"[SUCCESS] Immagine ricomposta a {base_width}x{base_height}")
+            
+    except Exception as e:
+        print(f"[ERRORE] Resize fallito: {e}")
 
 def main():
     print("[INFO] Avvio script wallpaper...")
@@ -343,9 +468,11 @@ def main():
         print("[ERRORE] Download o validazione immagine falliti")
         return
     
+    smart_resize_wallpaper(image_path)
     # Imposta wallpaper
     if set_wallpaper(image_path):
         print("[SUCCESS] ✅ Wallpaper cambiato con successo!\n")
+        update_windows_accent(image_path)
         
         # Salva informazioni
         try:

@@ -24,7 +24,7 @@ import requests
 from PIL import Image
 
 # Costanti
-API_KEY = "uSEGw3fuem0zi1Ks76NsilpRUtxXcTi1lEseL8P2" # "DEMO_KEY" # INSERIRE LA PROPRIA API KEY, OTTENIBILE DA https://api.nasa.gov/
+API_KEY = "DEMO_KEY" # INSERIRE LA PROPRIA API KEY, OTTENIBILE DA https://api.nasa.gov/
 START_DATE = datetime(1995, 6, 16)
 MAX_RETRIES = 5
 TIMEOUT = 10

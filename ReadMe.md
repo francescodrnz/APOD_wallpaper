@@ -1,60 +1,76 @@
-# NASA APOD Wallpaper Downloader
+# Space & Nature Wallpaper Manager
 
-This script downloads NASA's Astronomy Picture of the Day (APOD) and sets it as the desktop wallpaper on Windows.
-If the image of the day is not available, it randomly selects a date between June 16, 1995, and yesterday.
+Automated wallpaper switcher for Windows 11/10. Fetches high-res imagery from NASA and Unsplash, intelligently resizes them to fit your monitor using "Ambient Blur" padding, and syncs the Windows UI accent color to match the image atmosphere.
 
-## Requirements
-- **Windows** (required to set the wallpaper automatically)
-- **Python 3.7+**
-- Active internet connection
+## Core Features
+* **Multi-Source Fallback:** Cycles through **NASA APOD**, **NASA Image Library**, and **Unsplash** (Nature/Space themes). Automatically retries on failure.
+* **Smart Aspect Ratio:** No more cropping or black bars. Uses a Gaussian Blur algorithm to extend the background, preserving 100% of the original image composition (ideal for vertical/4:3 images on 16:9 screens).
+* **DWM Color Sync:** Extracts the dominant color palette from the wallpaper and injects it into the Windows Desktop Window Manager (DWM).
+    * *Dark Mode Safe:* Automatically normalizes near-black colors to Dark Grey to prevent Windows from resetting to default blue.
+* **Auto-Maintenance:** Self-installs dependencies, manages file rotation, and cleans up old wallpapers.
+
+## Setup & API Keys
+
+### 1. Get API Keys
+You need keys to access high-res streams. Both are free.
+
+* **NASA API:**
+    1. Go to [api.nasa.gov](https://api.nasa.gov/).
+    2. Fill in your name/email.
+    3. Copy the generated **API Key**.
+
+* **Unsplash API:**
+    1. Register at [unsplash.com/developers](https://unsplash.com/developers).
+    2. Click "New Application" -> Accept terms.
+    3. Name it (e.g., "WallpaperScript").
+    4. Scroll down to "Keys" and copy the **Access Key**.
+
+### 2. Configure Script
+Open `wallpaper_script.pyw` with a text editor and paste your keys in the configuration section:
+
+```python
+NASA_API_KEY = "DEMO_KEY"
+UNSPLASH_API_KEY = "your_unsplash_key_here"
+```
+
+## Windows Configuration (Important)
+For the best experience, ensure your Windows settings are correct:
+
+1. **Wallpaper Fit:** Go to *Personalization > Background* and set "Choose a fit for your desktop image" to **Fill** (or **Riempi** in Italian). 
+   * *Reason:* The script generates an image that matches your screen resolution exactly. Other settings might distort the "Ambient Blur" effect.
+2. **Accent Color:** Go to *Personalization > Colors* and set "Accent color" to **Automatic**.
+   * *Reason:* This allows the script to dynamically update the system color scheme.
 
 ## Installation
-1. **Download or clone the GitHub repository:**
+
+1. **Clone/Download:**
    ```sh
    git clone https://github.com/francescodrnz/APOD_wallpaper
    cd APOD_wallpaper
    ```
-2. **Run the script:**
-   ```sh
-   python apod.pyw
-   ```
-   The script will automatically install the required dependencies (**requests, pillow, keyboard**).
+2. **First Run:**
+   Double-click the script. It will automatically:
+   * Install missing Python libraries (`requests`, `pillow`).
+   * Create the `apod_images` directory.
+   * Download and set the first wallpaper.
 
-## How It Works
-- Downloads the latest APOD image (or a random one if needed)
-- Saves it in the `apod_images` folder inside the script directory
-- Rotates the image if necessary
-- Sets the image as the desktop wallpaper
+## Auto-Start
+1. **Create Shortcut:** Right-click the script file -> *Create Shortcut*.
+2. **Open Startup Folder:** Press `Win + R`, type `shell:startup`, and hit Enter.
+3. **Move Shortcut:** Drag the newly created shortcut into the Startup folder.
 
-## Running the Script Automatically at Windows Startup
-To run the script automatically every time Windows starts, follow these steps:
+*Done. The script will now trigger silently on every login.*
 
-1. **Create a batch file:**
-   - Open Notepad and paste the following:
-     ```sh
-     @echo off
-     python "C:\path\to\apod.pyw"
-     ```
-   - Replace `C:\path\to\apod.pyw` with the actual script path.
-   - Save it as `apod_wallpaper.bat` in a convenient location.
+## Requirements
+* **OS:** Windows 10 or 11 (Windows 11 recommended for DWM color features).
+* **Python:** 3.8+ recommended.
 
-2. **Add the batch file to Windows Startup:**
-   - Press `Win + R`, type `shell:startup`, and press `Enter`.
-   - Copy the `apod_wallpaper.bat` file into the Startup folder.
-
-Now, the script will run automatically every time you log into Windows.
-
-## Customization
-If you want to use a custom NASA API key, modify the `api_key` variable in `apod.pyw`.
-You can get a free API key here: [https://api.nasa.gov](https://api.nasa.gov)
+## Troubleshooting
+* **Windows Color remains Blue:** 1. Ensure your "Accent color" setting is set to Automatic in Windows Personalization settings. 2. The image might be too dark (pure black). The script has a safety override to set it to Dark Grey (`#282828`) to ensure visibility, but if it fails, check if "Accent Color on Start and Taskbar" is enabled in Windows Settings.
+* **Script doesn't run:** Check if `pythonw.exe` is associated with `.pyw` files.
 
 ## License
-This project is released under the MIT License.
+MIT License.
 
 ## Author
-Created by **Francesco Doronzo**
-
----
-
-If you have any questions or suggestions, feel free to open an **Issue** on GitHub!
-
+**Francesco Doronzo**
