@@ -16,7 +16,7 @@ For the features to work correctly, set these Windows settings:
 ## API Keys (Free)
 Before installing, get your free keys:
 * **NASA:** [api.nasa.gov](https://api.nasa.gov/)
-* **Unsplash:** [unsplash.com/developers](https://unsplash.com/developers) (Create a new App -> Copy Access Key)
+* **Unsplash:** [unsplash.com/developers](https://unsplash.com/developers) (Register -> Create a new App -> Copy Access Key)
 
 ## Installation & Setup
 

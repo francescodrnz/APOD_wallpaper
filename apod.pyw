@@ -218,7 +218,7 @@ def get_unsplash_image():
     return None
 
 def get_nasa_image_library():
-    queries = ["galaxy", "nebula", "planet", "earth from space", "space station", "astronaut", "mars", "moon", "jupiter", "saturn"]
+    queries = ["galaxy", "nebula", "planet", "earth from space", "space station", "mars", "moon", "jupiter", "saturn"]
     try:
         res = requests.get(f"https://images-api.nasa.gov/search?q={random.choice(queries)}&media_type=image&year_start=2015", timeout=TIMEOUT)
         res.raise_for_status()
