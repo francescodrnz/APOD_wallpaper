@@ -203,7 +203,7 @@ def get_unsplash_image():
                 "url": data["urls"]["raw"] + "&w=2560&h=1440&fit=max&q=85",
                 "title": data.get("description") or f"Unsplash {theme}",
                 "description": f"Photo by {data['user']['name']}", "date": datetime.now().strftime('%Y-%m-%d'),
-                "source": "Unsplash"
+                "source": "Unsplash", "category": theme
             }
         else:
             final_url = f"https://source.unsplash.com/2560x1440/?{theme}"
@@ -212,15 +212,16 @@ def get_unsplash_image():
                 return {
                     "url": res.url, "title": f"Unsplash {theme}",
                     "description": "Random Unsplash Image", "date": datetime.now().strftime('%Y-%m-%d'),
-                    "source": "Unsplash (Public)"
+                    "source": "Unsplash (Public)", "category": theme
                 }
     except: pass
     return None
 
 def get_nasa_image_library():
     queries = ["galaxy", "nebula", "planet", "earth from space", "space station", "mars", "moon", "jupiter", "saturn"]
+    query = random.choice(queries)
     try:
-        res = requests.get(f"https://images-api.nasa.gov/search?q={random.choice(queries)}&media_type=image&year_start=2015", timeout=TIMEOUT)
+        res = requests.get(f"https://images-api.nasa.gov/search?q={query}&media_type=image&year_start=2015", timeout=TIMEOUT)
         res.raise_for_status()
         items = res.json().get("collection", {}).get("items", [])
         if not items: return None
@@ -250,7 +251,7 @@ def get_nasa_image_library():
         return {
             "url": best_image, "title": meta.get("title"),
             "description": meta.get("description", "")[:500], "date": meta.get("date_created")[:10],
-            "source": "NASA Library"
+            "source": "NASA Library", "category": query
         }
     except: return None
 
@@ -282,7 +283,7 @@ def cleanup(folder, current, new_img, new_txt):
     
     files = sorted(folder.glob("wallpaper_*"), key=lambda x: x.stat().st_mtime, reverse=True)
     for f in files:
-        if f not in keep and len(keep) < 6:
+        if f not in keep and len(keep) < 8:
              keep.add(f)
         elif f not in keep:
             try: f.unlink()
@@ -327,7 +328,11 @@ def main():
             
             try:
                 desc = textwrap.fill(img_data['description'], 80)
-                txt_path.write_text(f"Title: {img_data['title']}\nDate: {img_data['date']}\nSource: {img_data['source']}\n\n{desc}", encoding='utf-8')
+                txt_content = f"Title: {img_data['title']}\nDate: {img_data['date']}\nSource: {img_data['source']}\n"
+                if 'category' in img_data:
+                    txt_content += f"Category/Theme: {img_data['category']}\n"
+                txt_content += f"\n{desc}"
+                txt_path.write_text(txt_content, encoding='utf-8')
             except: pass
             
             cleanup(folder, current_wp, img_path, txt_path)
