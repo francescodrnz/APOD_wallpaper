@@ -3,6 +3,7 @@ import winreg
 import json
 import sys
 import os
+import time
 import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
@@ -74,38 +75,93 @@ def main():
     
     info = get_current_wallpaper_info()
     
-    # Troncamento del titolo se è troppo lungo
-    display_title = info["title"]
-    if len(display_title) > 60:
-        display_title = display_title[:57] + "..."
-        
-    if info.get("category"):
-        title_str = f'{display_title} ({info["source"]} - {info["category"]})'
-    else:
-        title_str = f'{display_title} ({info["source"]})'
-    
-    root.title("Valutazione Sfondo")
-    
     # Dimensionamento e centratura finestra
     window_width = 340
-    window_height = 280
+    window_height = 310
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
     x = int((screen_width / 2) - (window_width / 2))
     y = int((screen_height / 2) - (window_height / 2))
     root.geometry(f'{window_width}x{window_height}+{x}+{y}')
-    root.attributes("-topmost", True) # Mantieni in primo piano
+    root.attributes("-topmost", True)
     root.resizable(False, False)
+    root.title("Valutazione Sfondo")
 
-    lbl_title = tk.Label(root, text=title_str, font=("Segoe UI", 10, "bold"), pady=10, wraplength=320)
+    lbl_title = tk.Label(root, text="", font=("Segoe UI", 10, "bold"), pady=10, wraplength=320)
     lbl_title.pack()
 
     lbl = tk.Label(root, text="Cosa vuoi fare con lo sfondo attuale?", font=("Segoe UI", 11), pady=5)
     lbl.pack()
 
+    btn_frame = tk.Frame(root)
+    btn_frame.pack()
+
+    btn_dislike = tk.Button(btn_frame, width=16, bg="#ffe5e5", font=("Segoe UI", 9))
+    btn_dislike.grid(row=0, column=0, padx=5, pady=5)
+
+    btn_like = tk.Button(btn_frame, width=16, bg="#e5ffe5", font=("Segoe UI", 9))
+    btn_like.grid(row=0, column=1, padx=5, pady=5)
+
+    btn_change = tk.Button(btn_frame, text="🔄 Cambia\n(Senza valutare)", width=16, bg="#f0f0f0", font=("Segoe UI", 9))
+    btn_change.grid(row=1, column=0, padx=5, pady=5)
+
+    btn_info = tk.Button(btn_frame, text="📄 Apri info\n(Mostra testo)", width=16, bg="#eef5ff", font=("Segoe UI", 9))
+    btn_info.grid(row=1, column=1, padx=5, pady=5)
+
+    btn_manage = tk.Button(btn_frame, text="📊 Gestione & Statistiche", width=34, bg="#f3e5ff", font=("Segoe UI", 9))
+    btn_manage.grid(row=2, column=0, columnspan=2, padx=5, pady=5)
+
+    lbl_status = tk.Label(root, text="", font=("Segoe UI", 9, "italic"))
+    lbl_status.pack(pady=2)
+
+    def refresh_ui(status_msg="", color="green"):
+        nonlocal info
+        info = get_current_wallpaper_info()
+        
+        display_title = info["title"]
+        if len(display_title) > 60:
+            display_title = display_title[:57] + "..."
+            
+        if info.get("category"):
+            title_str = f'{display_title} ({info["source"]} - {info["category"]})'
+        else:
+            title_str = f'{display_title} ({info["source"]})'
+        
+        lbl_title.config(text=title_str)
+        
+        rated = info.get("rated", False)
+        text_dislike = "👎 Non mi piace\n(Già valutato)" if rated else "👎 Non mi piace\n(Scarta)"
+        text_like = "👍 Mi piace!\n(Già valutato)" if rated else "👍 Mi piace!\n(Mantieni)"
+        
+        btn_dislike.config(text=text_dislike, state=tk.DISABLED if rated else tk.NORMAL)
+        btn_like.config(text=text_like, state=tk.DISABLED if rated else tk.NORMAL)
+        btn_change.config(state=tk.NORMAL)
+        btn_info.config(state=tk.NORMAL)
+        btn_manage.config(state=tk.NORMAL)
+        
+        if status_msg:
+            lbl_status.config(text=status_msg, fg=color)
+        else:
+            lbl_status.config(text="")
+
+    def check_process(proc, start_time):
+        if proc.poll() is None:
+            elapsed = int(time.time() - start_time)
+            lbl_status.config(text=f"⏳ Sfondo in download... ({elapsed}s)", fg="blue")
+            root.after(1000, check_process, proc, start_time)
+        else:
+            refresh_ui("✅ Sfondo cambiato con successo!", "green")
+
     def run_apod():
         if APOD_SCRIPT.exists():
-            subprocess.Popen([sys.executable, str(APOD_SCRIPT)], cwd=str(BASE_DIR), creationflags=subprocess.CREATE_NO_WINDOW)
+            btn_dislike.config(state=tk.DISABLED)
+            btn_like.config(state=tk.DISABLED)
+            btn_change.config(state=tk.DISABLED)
+            btn_info.config(state=tk.DISABLED)
+            btn_manage.config(state=tk.DISABLED)
+            lbl_status.config(text="⏳ Sfondo in download... (0s)", fg="blue")
+            proc = subprocess.Popen([sys.executable, str(APOD_SCRIPT)], cwd=str(BASE_DIR), creationflags=subprocess.CREATE_NO_WINDOW)
+            root.after(1000, check_process, proc, time.time())
 
     def action(choice):
         if choice == "open_txt":
@@ -149,7 +205,7 @@ def main():
             if cat and not rated: 
                 update_stats(cat, is_positive=True)
                 mark_rated()
-            # Non cambia sfondo
+            refresh_ui("✅ Valutazione salvata!", "green")
         elif choice == "dislike":
             if cat and not rated: 
                 update_stats(cat, is_positive=False)
@@ -157,7 +213,6 @@ def main():
             run_apod()
         elif choice == "change":
             run_apod()
-        root.destroy()
 
     def manage_categories():
         manage_win = tk.Toplevel(root)
@@ -257,29 +312,13 @@ def main():
         btn_save = tk.Button(manage_win, text="Salva e Chiudi", command=save_and_close, bg="#e5ffe5", width=20)
         btn_save.pack(pady=10)
 
-    btn_frame = tk.Frame(root)
-    btn_frame.pack()
+    btn_dislike.config(command=lambda: action("dislike"))
+    btn_like.config(command=lambda: action("like"))
+    btn_change.config(command=lambda: action("change"))
+    btn_info.config(command=lambda: action("open_txt"))
+    btn_manage.config(command=manage_categories)
 
-    rated = info.get("rated", False)
-    text_dislike = "👎 Non mi piace\n(Già valutato)" if rated else "👎 Non mi piace\n(Scarta)"
-    text_like = "👍 Mi piace!\n(Già valutato)" if rated else "👍 Mi piace!\n(Mantieni)"
-
-    btn_dislike = tk.Button(btn_frame, text=text_dislike, command=lambda: action("dislike"), width=16, bg="#ffe5e5", font=("Segoe UI", 9))
-    if rated: btn_dislike.config(state=tk.DISABLED) # Disabilitato perché già valutato
-    btn_dislike.grid(row=0, column=0, padx=5, pady=5)
-
-    btn_like = tk.Button(btn_frame, text=text_like, command=lambda: action("like"), width=16, bg="#e5ffe5", font=("Segoe UI", 9))
-    if rated: btn_like.config(state=tk.DISABLED) # Disabilitato perché già valutato
-    btn_like.grid(row=0, column=1, padx=5, pady=5)
-
-    btn_change = tk.Button(btn_frame, text="🔄 Cambia\n(Senza valutare)", command=lambda: action("change"), width=16, bg="#f0f0f0", font=("Segoe UI", 9))
-    btn_change.grid(row=1, column=0, padx=5, pady=5)
-
-    btn_info = tk.Button(btn_frame, text="📄 Apri info\n(Mostra testo)", command=lambda: action("open_txt"), width=16, bg="#eef5ff", font=("Segoe UI", 9))
-    btn_info.grid(row=1, column=1, padx=5, pady=5)
-
-    btn_manage = tk.Button(btn_frame, text="📊 Gestione & Statistiche", command=manage_categories, width=34, bg="#f3e5ff", font=("Segoe UI", 9))
-    btn_manage.grid(row=2, column=0, columnspan=2, padx=5, pady=5)
+    refresh_ui()
 
     root.mainloop()
 
