@@ -20,25 +20,28 @@ def get_current_wallpaper():
     except:
         return None
 
-def get_current_category():
+def get_current_wallpaper_info():
+    info = {"title": "Sfondo Sconosciuto", "source": "Sconosciuto", "category": None, "content": "Nessuna informazione disponibile per questo sfondo.", "cat_or_source": None}
     wp_path = get_current_wallpaper()
     if wp_path and wp_path.exists():
         txt_path = wp_path.with_suffix(".txt")
         if txt_path.exists():
             try:
                 content = txt_path.read_text(encoding="utf-8")
+                info["content"] = content
                 lines = content.splitlines()
-                category = None
-                source = None
                 for line in lines:
                     if line.startswith("Category/Theme:"):
-                        category = line.replace("Category/Theme:", "").strip()
+                        info["category"] = line.replace("Category/Theme:", "").strip()
                     elif line.startswith("Source:"):
-                        source = line.replace("Source:", "").strip()
-                return category if category else source
+                        info["source"] = line.replace("Source:", "").strip()
+                    elif line.startswith("Title:"):
+                        info["title"] = line.replace("Title:", "").strip()
+                
+                info["cat_or_source"] = info["category"] if info["category"] else info["source"]
             except:
                 pass
-    return None
+    return info
 
 def update_stats(category, is_positive):
     stats = {}
@@ -65,11 +68,15 @@ def update_stats(category, is_positive):
 
 def main():
     root = tk.Tk()
+    
+    info = get_current_wallpaper_info()
+    title_str = f'{info["title"]} ({info["source"]})'
+    
     root.title("Valutazione Sfondo")
     
     # Dimensionamento e centratura finestra
-    window_width = 320
-    window_height = 240
+    window_width = 340
+    window_height = 280
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
     x = int((screen_width / 2) - (window_width / 2))
@@ -78,7 +85,10 @@ def main():
     root.attributes("-topmost", True) # Mantieni in primo piano
     root.resizable(False, False)
 
-    lbl = tk.Label(root, text="Cosa vuoi fare con lo sfondo attuale?", font=("Segoe UI", 11), pady=15)
+    lbl_title = tk.Label(root, text=title_str, font=("Segoe UI", 10, "bold"), pady=10, wraplength=320)
+    lbl_title.pack()
+
+    lbl = tk.Label(root, text="Cosa vuoi fare con lo sfondo attuale?", font=("Segoe UI", 11), pady=5)
     lbl.pack()
 
     def run_apod():
@@ -87,14 +97,21 @@ def main():
 
     def action(choice):
         if choice == "open_txt":
-            wp_path = get_current_wallpaper()
-            if wp_path:
-                txt_path = wp_path.with_suffix(".txt")
-                if txt_path.exists():
-                    os.startfile(txt_path)
+            info_win = tk.Toplevel(root)
+            info_win.title("Informazioni Sfondo")
+            info_win.geometry("500x400")
+            info_win.grab_set()
+            
+            txt_area = tk.Text(info_win, wrap=tk.WORD, font=("Segoe UI", 10), padx=10, pady=10)
+            txt_area.insert(tk.END, info["content"])
+            txt_area.config(state=tk.DISABLED)
+            txt_area.pack(fill=tk.BOTH, expand=True)
+            
+            btn_close = tk.Button(info_win, text="Chiudi", command=info_win.destroy, width=15)
+            btn_close.pack(pady=10)
             return
 
-        cat = get_current_category()
+        cat = info["cat_or_source"]
         if choice == "like":
             if cat: update_stats(cat, is_positive=True)
             # Non cambia sfondo
