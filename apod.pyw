@@ -238,10 +238,20 @@ def get_unsplash_image():
             res = requests.get(url, headers=headers, timeout=TIMEOUT)
             res.raise_for_status()
             data = res.json()
+            
+            # Unsplash spesso ha 'alt_description' o 'description'
+            raw_title = data.get("alt_description") or data.get("description") or f"Unsplash {theme}"
+            raw_desc = data.get("description") or data.get("alt_description") or "Nessuna descrizione disponibile."
+            
+            # Costruiamo i metadati
+            full_desc = f"Photo by {data.get('user', {}).get('name', 'Unknown')}.\n{raw_desc}"
+            created_date = data.get("created_at", datetime.now().strftime('%Y-%m-%d'))[:10]
+            
             return {
                 "url": data["urls"]["raw"] + "&w=2560&h=1440&fit=max&q=85",
-                "title": data.get("description") or f"Unsplash {theme}",
-                "description": f"Photo by {data['user']['name']}", "date": datetime.now().strftime('%Y-%m-%d'),
+                "title": raw_title.capitalize(),
+                "description": full_desc, 
+                "date": created_date,
                 "source": "Unsplash", "category": theme
             }
         else:
