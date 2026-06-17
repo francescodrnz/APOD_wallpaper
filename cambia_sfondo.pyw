@@ -4,9 +4,11 @@ import json
 import sys
 import os
 import time
+import ctypes
 import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
+from PIL import Image
 
 # --- CONFIGURAZIONI ---
 BASE_DIR = Path(__file__).parent
@@ -21,6 +23,37 @@ def get_current_wallpaper():
             return Path(wallpaper_path) if wallpaper_path else None
     except:
         return None
+
+def set_wallpaper(path):
+    try:
+        ctypes.windll.user32.SystemParametersInfoW(20, 0, str(path), 3)
+        return True
+    except: return False
+
+def update_windows_accent(image_path):
+    try:
+        with Image.open(image_path) as img:
+            img = img.resize((100, 100)).convert("RGB")
+            colors = img.getcolors(10000)
+            if not colors: return False
+            
+            colors.sort(key=lambda x: x[0], reverse=True)
+            r, g, b = colors[0][1]
+
+            if (r + g + b) < 80:
+                r, g, b = 40, 40, 40
+
+            accent_color_dword = (0 << 24) | (b << 16) | (g << 8) | r
+            
+            key_path = r"Software\Microsoft\Windows\DWM"
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                winreg.SetValueEx(key, "AccentColor", 0, winreg.REG_DWORD, accent_color_dword)
+                winreg.SetValueEx(key, "ColorPrevalence", 0, winreg.REG_DWORD, 1)
+                
+            ctypes.windll.user32.SystemParametersInfoW(20, 0, str(image_path), 3)
+            return True
+    except:
+        return False
 
 def get_current_wallpaper_info():
     info = {"title": "Sfondo Sconosciuto", "source": "Sconosciuto", "category": None, "content": "Nessuna informazione disponibile per questo sfondo.", "cat_or_source": None, "rated": False}
@@ -77,7 +110,7 @@ def main():
     
     # Dimensionamento e centratura finestra
     window_width = 340
-    window_height = 310
+    window_height = 350
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
     x = int((screen_width / 2) - (window_width / 2))
@@ -111,6 +144,12 @@ def main():
     btn_manage = tk.Button(btn_frame, text="📊 Gestione & Statistiche", width=34, bg="#f3e5ff", font=("Segoe UI", 9))
     btn_manage.grid(row=2, column=0, columnspan=2, padx=5, pady=5)
 
+    btn_prev = tk.Button(btn_frame, text="⬅️ Precedente", width=16, bg="#f0f0f0", font=("Segoe UI", 9))
+    btn_prev.grid(row=3, column=0, padx=5, pady=5)
+
+    btn_next = tk.Button(btn_frame, text="Successivo ➡️", width=16, bg="#f0f0f0", font=("Segoe UI", 9))
+    btn_next.grid(row=3, column=1, padx=5, pady=5)
+
     lbl_status = tk.Label(root, text="", font=("Segoe UI", 9, "italic"))
     lbl_status.pack(pady=2)
 
@@ -139,6 +178,17 @@ def main():
         btn_info.config(state=tk.NORMAL)
         btn_manage.config(state=tk.NORMAL)
         
+        # History check
+        files = sorted((BASE_DIR / "apod_images").glob("wallpaper_*.jpg"), key=lambda f: f.stat().st_mtime)
+        curr = get_current_wallpaper()
+        try:
+            idx = next(i for i, f in enumerate(files) if curr and f.name == curr.name)
+        except StopIteration:
+            idx = len(files) - 1
+            
+        btn_prev.config(state=tk.NORMAL if idx > 0 else tk.DISABLED)
+        btn_next.config(state=tk.NORMAL if idx < len(files) - 1 else tk.DISABLED)
+        
         if status_msg:
             lbl_status.config(text=status_msg, fg=color)
         else:
@@ -159,9 +209,40 @@ def main():
             btn_change.config(state=tk.DISABLED)
             btn_info.config(state=tk.DISABLED)
             btn_manage.config(state=tk.DISABLED)
+            btn_prev.config(state=tk.DISABLED)
+            btn_next.config(state=tk.DISABLED)
             lbl_status.config(text="⏳ Sfondo in download... (0s)", fg="blue")
             proc = subprocess.Popen([sys.executable, str(APOD_SCRIPT)], cwd=str(BASE_DIR), creationflags=subprocess.CREATE_NO_WINDOW)
             root.after(1000, check_process, proc, time.time())
+
+    def cycle_wallpaper(direction):
+        files = sorted((BASE_DIR / "apod_images").glob("wallpaper_*.jpg"), key=lambda f: f.stat().st_mtime)
+        if not files: return
+        
+        curr = get_current_wallpaper()
+        try:
+            idx = next(i for i, f in enumerate(files) if curr and f.name == curr.name)
+        except StopIteration:
+            idx = len(files) - 1
+
+        new_idx = idx + direction
+        if 0 <= new_idx < len(files):
+            new_wp = files[new_idx]
+            
+            btn_dislike.config(state=tk.DISABLED)
+            btn_like.config(state=tk.DISABLED)
+            btn_change.config(state=tk.DISABLED)
+            btn_info.config(state=tk.DISABLED)
+            btn_manage.config(state=tk.DISABLED)
+            btn_prev.config(state=tk.DISABLED)
+            btn_next.config(state=tk.DISABLED)
+            lbl_status.config(text="⏳ Impostazione sfondo...", fg="blue")
+            root.update()
+            
+            if set_wallpaper(new_wp):
+                update_windows_accent(new_wp)
+                
+            refresh_ui("✅ Sfondo impostato!", "green")
 
     def action(choice):
         if choice == "open_txt":
@@ -317,6 +398,8 @@ def main():
     btn_change.config(command=lambda: action("change"))
     btn_info.config(command=lambda: action("open_txt"))
     btn_manage.config(command=manage_categories)
+    btn_prev.config(command=lambda: cycle_wallpaper(-1))
+    btn_next.config(command=lambda: cycle_wallpaper(1))
 
     refresh_ui()
 

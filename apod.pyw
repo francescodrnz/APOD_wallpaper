@@ -334,7 +334,7 @@ def cleanup(folder, current, new_img, new_txt):
     
     files = sorted(folder.glob("wallpaper_*"), key=lambda x: x.stat().st_mtime, reverse=True)
     for f in files:
-        if f not in keep and len(keep) < 8:
+        if f not in keep and len(keep) < 12:
              keep.add(f)
         elif f not in keep:
             try: f.unlink()
