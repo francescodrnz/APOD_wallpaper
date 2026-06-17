@@ -327,7 +327,7 @@ def main():
             update_windows_accent(img_path)
             
             try:
-                desc = img_data.get('description', '')
+                desc = img_data.get('description', '').replace('\n', ' ').replace('\r', '')
                 txt_content = f"Title: {img_data['title']}\nDate: {img_data['date']}\nSource: {img_data['source']}\n"
                 if 'category' in img_data:
                     txt_content += f"Category/Theme: {img_data['category']}\n"
