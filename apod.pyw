@@ -34,6 +34,7 @@ CONFIG_FILE = Path(__file__).parent / "config.json"
 MAX_RETRIES = 3
 TIMEOUT = 10
 START_DATE = datetime(1995, 6, 16)
+STATS_FILE = Path(__file__).parent / "statistiche.json"
 
 def show_popup(title, message, style=0x40):
     """
@@ -46,12 +47,14 @@ def show_popup(title, message, style=0x40):
 def load_config():
     default_config = {
         "NASA_API_KEY": "DEMO_KEY",
-        "UNSPLASH_API_KEY": "your_unsplash_key_here"
+        "UNSPLASH_API_KEY": "your_unsplash_key_here",
+        "unsplash_categories": ["nature", "landscape", "space", "mountain", "ocean", "sky", "forest", "desert", "aurora", "milkyway"],
+        "nasa_categories": ["galaxy", "nebula", "planet", "earth from space", "space station", "mars", "moon", "jupiter", "saturn"]
     }
     
     if not CONFIG_FILE.exists():
         try:
-            with open(CONFIG_FILE, "w") as f:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump(default_config, f, indent=4)
             
             # Popup con scelta Sì/No (0x04 = MB_YESNO)
@@ -71,8 +74,20 @@ def load_config():
             return default_config
 
     try:
-        with open(CONFIG_FILE, "r") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             config = json.load(f)
+            
+        migrated = False
+        if "unsplash_categories" not in config:
+            config["unsplash_categories"] = default_config["unsplash_categories"]
+            migrated = True
+        if "nasa_categories" not in config:
+            config["nasa_categories"] = default_config["nasa_categories"]
+            migrated = True
+            
+        if migrated:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4)
         
         nasa_key = config.get("NASA_API_KEY", "")
         unsplash_key = config.get("UNSPLASH_API_KEY", "")
@@ -174,6 +189,21 @@ def update_windows_accent(image_path):
 
 # --- API FUNCTIONS ---
 
+def get_valid_categories(source_list):
+    excluded = set()
+    if STATS_FILE.exists():
+        try:
+            with open(STATS_FILE, "r", encoding="utf-8") as f:
+                stats = json.load(f)
+                for cat, counts in stats.items():
+                    p = counts.get("positivi", 0)
+                    s = counts.get("scarti", 0)
+                    tot = p + s
+                    if tot > 15 and (s / tot) > 0.8:
+                        excluded.add(cat)
+        except: pass
+    return [c for c in source_list if c not in excluded]
+
 def get_apod_data(date=None):
     url = f"https://api.nasa.gov/planetary/apod?api_key={NASA_API_KEY}&hd=True"
     if date: url += f"&date={date}"
@@ -190,8 +220,10 @@ def get_apod_data(date=None):
     except: return None
 
 def get_unsplash_image():
-    themes = ["nature", "landscape", "space", "mountain", "ocean", "sky", "forest", "desert", "aurora", "milkyway"]
-    theme = random.choice(themes)
+    themes = config.get("unsplash_categories", ["space"])
+    valid_themes = get_valid_categories(themes)
+    if not valid_themes: return None
+    theme = random.choice(valid_themes)
     try:
         if UNSPLASH_API_KEY and "INSERISCI" not in UNSPLASH_API_KEY:
             url = f"https://api.unsplash.com/photos/random?query={theme}&orientation=landscape"
@@ -218,8 +250,10 @@ def get_unsplash_image():
     return None
 
 def get_nasa_image_library():
-    queries = ["galaxy", "nebula", "planet", "earth from space", "space station", "mars", "moon", "jupiter", "saturn"]
-    query = random.choice(queries)
+    queries = config.get("nasa_categories", ["galaxy"])
+    valid_queries = get_valid_categories(queries)
+    if not valid_queries: return None
+    query = random.choice(valid_queries)
     try:
         res = requests.get(f"https://images-api.nasa.gov/search?q={query}&media_type=image&year_start=2015", timeout=TIMEOUT)
         res.raise_for_status()

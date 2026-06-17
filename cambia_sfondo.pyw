@@ -10,6 +10,7 @@ from pathlib import Path
 # --- CONFIGURAZIONI ---
 BASE_DIR = Path(__file__).parent
 STATS_FILE = BASE_DIR / "statistiche.json"
+CONFIG_FILE = BASE_DIR / "config.json"
 APOD_SCRIPT = BASE_DIR / "apod.pyw"
 
 def get_current_wallpaper():
@@ -178,7 +179,11 @@ def main():
                 for cat, counts in sorted_stats:
                     p = counts.get("positivi", 0)
                     s = counts.get("scarti", 0)
-                    tree.insert("", tk.END, values=(cat, p, s))
+                    tot = p + s
+                    display_cat = cat
+                    if tot > 15 and (s / tot) > 0.8:
+                        display_cat = f"{cat} 🔴 (Esclusa)"
+                    tree.insert("", tk.END, values=(display_cat, p, s))
             except:
                 tree.insert("", tk.END, values=("Nessuna statistica", "-", "-"))
         else:
@@ -186,6 +191,83 @@ def main():
             
         btn_close = tk.Button(stats_win, text="Chiudi", command=stats_win.destroy, width=15)
         btn_close.pack(pady=5)
+
+    def manage_categories():
+        manage_win = tk.Toplevel(root)
+        manage_win.title("Gestione Categorie")
+        manage_win.geometry("500x400")
+        manage_win.grab_set()
+
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        except: return
+            
+        lbl_info = tk.Label(manage_win, text="Aggiungi o rimuovi parole chiave per le ricerche.", pady=10)
+        lbl_info.pack()
+
+        frames_container = tk.Frame(manage_win)
+        frames_container.pack(fill=tk.BOTH, expand=True, padx=10)
+
+        # Frame Unsplash
+        f_unsplash = tk.Frame(frames_container)
+        f_unsplash.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        tk.Label(f_unsplash, text="Unsplash Themes").pack()
+        list_u = tk.Listbox(f_unsplash)
+        list_u.pack(fill=tk.BOTH, expand=True)
+        for c in cfg.get("unsplash_categories", []): list_u.insert(tk.END, c)
+        
+        entry_u = tk.Entry(f_unsplash)
+        entry_u.pack(fill=tk.X, pady=2)
+        def add_u():
+            val = entry_u.get().strip()
+            if val and val not in list_u.get(0, tk.END):
+                list_u.insert(tk.END, val)
+                entry_u.delete(0, tk.END)
+        def rem_u():
+            sel = list_u.curselection()
+            if sel: list_u.delete(sel[0])
+        
+        btn_frame_u = tk.Frame(f_unsplash)
+        btn_frame_u.pack()
+        tk.Button(btn_frame_u, text="+ Aggiungi", command=add_u).pack(side=tk.LEFT, padx=2)
+        tk.Button(btn_frame_u, text="- Rimuovi", command=rem_u).pack(side=tk.LEFT, padx=2)
+
+        # Frame NASA
+        f_nasa = tk.Frame(frames_container)
+        f_nasa.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5)
+        tk.Label(f_nasa, text="NASA Queries").pack()
+        list_n = tk.Listbox(f_nasa)
+        list_n.pack(fill=tk.BOTH, expand=True)
+        for c in cfg.get("nasa_categories", []): list_n.insert(tk.END, c)
+        
+        entry_n = tk.Entry(f_nasa)
+        entry_n.pack(fill=tk.X, pady=2)
+        def add_n():
+            val = entry_n.get().strip()
+            if val and val not in list_n.get(0, tk.END):
+                list_n.insert(tk.END, val)
+                entry_n.delete(0, tk.END)
+        def rem_n():
+            sel = list_n.curselection()
+            if sel: list_n.delete(sel[0])
+
+        btn_frame_n = tk.Frame(f_nasa)
+        btn_frame_n.pack()
+        tk.Button(btn_frame_n, text="+ Aggiungi", command=add_n).pack(side=tk.LEFT, padx=2)
+        tk.Button(btn_frame_n, text="- Rimuovi", command=rem_n).pack(side=tk.LEFT, padx=2)
+
+        def save_and_close():
+            cfg["unsplash_categories"] = list(list_u.get(0, tk.END))
+            cfg["nasa_categories"] = list(list_n.get(0, tk.END))
+            try:
+                with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                    json.dump(cfg, f, indent=4)
+            except: pass
+            manage_win.destroy()
+
+        btn_save = tk.Button(manage_win, text="Salva e Chiudi", command=save_and_close, bg="#e5ffe5", width=20)
+        btn_save.pack(pady=10)
 
     btn_frame = tk.Frame(root)
     btn_frame.pack()
@@ -202,8 +284,11 @@ def main():
     btn_info = tk.Button(btn_frame, text="📄 Apri info\n(Mostra testo)", command=lambda: action("open_txt"), width=16, bg="#eef5ff", font=("Segoe UI", 9))
     btn_info.grid(row=1, column=1, padx=5, pady=5)
 
-    btn_stats = tk.Button(btn_frame, text="📊 Mostra Statistiche", command=show_stats, width=34, bg="#fff4e5", font=("Segoe UI", 9))
-    btn_stats.grid(row=2, column=0, columnspan=2, padx=5, pady=5)
+    btn_stats = tk.Button(btn_frame, text="📊 Statistiche", command=show_stats, width=16, bg="#fff4e5", font=("Segoe UI", 9))
+    btn_stats.grid(row=2, column=0, padx=5, pady=5)
+
+    btn_manage = tk.Button(btn_frame, text="⚙️ Gestione", command=manage_categories, width=16, bg="#f3e5ff", font=("Segoe UI", 9))
+    btn_manage.grid(row=2, column=1, padx=5, pady=5)
 
     root.mainloop()
 
