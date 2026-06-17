@@ -145,15 +145,20 @@ def smart_resize_wallpaper(image_path):
             base_height = int(base_width / target_ratio)
             canvas = Image.new('RGB', (base_width, base_height))
 
-            bg_layer = img.copy()
+            # Estraiamo direttamente il riquadro centrale proporzionale allo schermo
             scale = max(base_width / orig_w, base_height / orig_h)
-            bg_w, bg_h = int(orig_w * scale), int(orig_h * scale)
-            bg_layer = bg_layer.resize((bg_w, bg_h), Image.Resampling.LANCZOS)
+            crop_w, crop_h = int(base_width / scale), int(base_height / scale)
+            left = (orig_w - crop_w) // 2
+            top = (orig_h - crop_h) // 2
+            bg_layer = img.crop((left, top, left + crop_w, top + crop_h))
             
-            left = (bg_w - base_width) // 2
-            top = (bg_h - base_height) // 2
-            bg_layer = bg_layer.crop((left, top, left + base_width, top + base_height))
-            bg_layer = bg_layer.filter(ImageFilter.GaussianBlur(radius=50))
+            # Riduciamo drasticamente la risoluzione per velocizzare il GaussianBlur
+            tiny_w, tiny_h = max(1, base_width // 10), max(1, base_height // 10)
+            bg_layer = bg_layer.resize((tiny_w, tiny_h), Image.Resampling.BILINEAR)
+            bg_layer = bg_layer.filter(ImageFilter.GaussianBlur(radius=5))
+            
+            # Riportiamo a grandezza schermo
+            bg_layer = bg_layer.resize((base_width, base_height), Image.Resampling.LANCZOS)
             bg_layer = ImageEnhance.Brightness(bg_layer).enhance(0.6)
             
             scale_fit = min(base_width / orig_w, base_height / orig_h)
@@ -172,7 +177,8 @@ def smart_resize_wallpaper(image_path):
 def update_windows_accent(image_path):
     try:
         with Image.open(image_path) as img:
-            img = img.resize((100, 100)).convert("RGB")
+            img.thumbnail((100, 100))
+            img = img.convert("RGB")
             colors = img.getcolors(10000)
             if not colors: return False
             

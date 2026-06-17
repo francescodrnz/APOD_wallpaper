@@ -33,7 +33,8 @@ def set_wallpaper(path):
 def update_windows_accent(image_path):
     try:
         with Image.open(image_path) as img:
-            img = img.resize((100, 100)).convert("RGB")
+            img.thumbnail((100, 100))
+            img = img.convert("RGB")
             colors = img.getcolors(10000)
             if not colors: return False
             
