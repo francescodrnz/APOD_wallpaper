@@ -21,7 +21,7 @@ def get_current_wallpaper():
         return None
 
 def get_current_wallpaper_info():
-    info = {"title": "Sfondo Sconosciuto", "source": "Sconosciuto", "category": None, "content": "Nessuna informazione disponibile per questo sfondo.", "cat_or_source": None}
+    info = {"title": "Sfondo Sconosciuto", "source": "Sconosciuto", "category": None, "content": "Nessuna informazione disponibile per questo sfondo.", "cat_or_source": None, "rated": False}
     wp_path = get_current_wallpaper()
     if wp_path and wp_path.exists():
         txt_path = wp_path.with_suffix(".txt")
@@ -37,6 +37,8 @@ def get_current_wallpaper_info():
                         info["source"] = line.replace("Source:", "").strip()
                     elif line.startswith("Title:"):
                         info["title"] = line.replace("Title:", "").strip()
+                    elif line.startswith("Valutato:"):
+                        info["rated"] = line.replace("Valutato:", "").strip().lower() == "si"
                 
                 info["cat_or_source"] = info["category"] if info["category"] else info["source"]
             except:
@@ -112,11 +114,27 @@ def main():
             return
 
         cat = info["cat_or_source"]
+        rated = info.get("rated", False)
+
+        def mark_rated():
+            wp_path = get_current_wallpaper()
+            if wp_path:
+                txt_path = wp_path.with_suffix(".txt")
+                if txt_path.exists():
+                    try:
+                        with open(txt_path, "a", encoding="utf-8") as f:
+                            f.write("\nValutato: Si\n")
+                    except: pass
+
         if choice == "like":
-            if cat: update_stats(cat, is_positive=True)
+            if cat and not rated: 
+                update_stats(cat, is_positive=True)
+                mark_rated()
             # Non cambia sfondo
         elif choice == "dislike":
-            if cat: update_stats(cat, is_positive=False)
+            if cat and not rated: 
+                update_stats(cat, is_positive=False)
+                mark_rated()
             run_apod()
         elif choice == "change":
             run_apod()
