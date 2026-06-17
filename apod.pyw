@@ -278,12 +278,28 @@ def get_nasa_image_library():
     if not valid_queries: return None
     query = random.choice(valid_queries)
     try:
-        res = requests.get(f"https://images-api.nasa.gov/search?q={query}&media_type=image&year_start=2015", timeout=TIMEOUT)
+        base_url = f"https://images-api.nasa.gov/search?q={query}&media_type=image&year_start=2010"
+        res = requests.get(base_url, timeout=TIMEOUT)
         res.raise_for_status()
-        items = res.json().get("collection", {}).get("items", [])
+        data = res.json().get("collection", {})
+        total_hits = data.get("metadata", {}).get("total_hits", 0)
+        items = data.get("items", [])
+        
+        # Se ci sono più di 100 risultati, peschiamo da una pagina casuale (max 10 pagine per mantenere pertinenza)
+        if total_hits > 100:
+            max_pages = min(10, (total_hits // 100) + 1)
+            random_page = random.randint(1, max_pages)
+            if random_page > 1:
+                try:
+                    res2 = requests.get(f"{base_url}&page={random_page}", timeout=TIMEOUT)
+                    if res2.status_code == 200:
+                        new_items = res2.json().get("collection", {}).get("items", [])
+                        if new_items: items = new_items
+                except: pass
+                
         if not items: return None
         
-        item = random.choice(items[:30])
+        item = random.choice(items)
         
         asset_res = requests.get(item["href"], timeout=TIMEOUT)
         asset_res.raise_for_status()
