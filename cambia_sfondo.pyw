@@ -72,7 +72,10 @@ def main():
     root = tk.Tk()
     
     info = get_current_wallpaper_info()
-    title_str = f'{info["title"]} ({info["source"]})'
+    if info.get("category"):
+        title_str = f'{info["title"]} ({info["source"]} - {info["category"]})'
+    else:
+        title_str = f'{info["title"]} ({info["source"]})'
     
     root.title("Valutazione Sfondo")
     
