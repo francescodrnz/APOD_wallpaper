@@ -48,8 +48,15 @@ def load_config():
     default_config = {
         "NASA_API_KEY": "DEMO_KEY",
         "UNSPLASH_API_KEY": "your_unsplash_key_here",
-        "unsplash_categories": ["nature", "landscape", "space", "mountain", "ocean", "sky", "forest", "desert", "aurora", "milkyway"],
-        "nasa_categories": ["galaxy", "nebula", "planet", "earth from space", "space station", "mars", "moon", "jupiter", "saturn"]
+        "unsplash_categories": [
+            "nature", "landscape", "space", "mountain", "ocean", "sky", "forest", "desert", "aurora", "milkyway",
+            "astrophotography", "stars", "night sky", "cosmos", "observatory", "telescope",
+            "volcano", "canyon", "glacier", "waterfall", "sunset", "abstract", "cityscape", "minimalism"
+        ],
+        "nasa_categories": [
+            "galaxy", "nebula", "planet", "earth from space", "space station", "mars", "moon", "jupiter", "saturn",
+            "astronaut", "hubble", "james webb", "supernova", "black hole", "solar eclipse", "aurora borealis"
+        ]
     }
     
     if not CONFIG_FILE.exists():
