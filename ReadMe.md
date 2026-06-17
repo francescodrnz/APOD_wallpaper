@@ -43,8 +43,8 @@ Before installing, get your free keys:
    Double-click `apod.pyw`. It will now download your first wallpaper.
 
 ## UI & Statistics (`cambia_sfondo.pyw`)
-You can evaluate and manage your wallpapers using the interactive UI:
-1. Double-click `cambia_sfondo.pyw` to open the evaluation window.
+You can evaluate and manage your wallpapers using the interactive UI. **💡 Recommended use:** Create a shortcut to `cambia_sfondo.pyw` on your Desktop for quick access!
+1. Double-click `cambia_sfondo.pyw` (or its shortcut) to open the evaluation window.
 2. View the **Title, Source, and Category** of the current image.
 3. Read the image description directly via the **Apri info** button.
 4. **Rate** the wallpaper (Like/Dislike) to track your preferences (the script prevents duplicate votes).
