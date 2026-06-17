@@ -272,10 +272,16 @@ def main():
     btn_frame = tk.Frame(root)
     btn_frame.pack()
 
-    btn_dislike = tk.Button(btn_frame, text="👎 Non mi piace\n(Scarta)", command=lambda: action("dislike"), width=16, bg="#ffe5e5", font=("Segoe UI", 9))
+    rated = info.get("rated", False)
+    text_dislike = "👎 Non mi piace\n(Già valutato)" if rated else "👎 Non mi piace\n(Scarta)"
+    text_like = "👍 Mi piace!\n(Già valutato)" if rated else "👍 Mi piace!\n(Mantieni)"
+
+    btn_dislike = tk.Button(btn_frame, text=text_dislike, command=lambda: action("dislike"), width=16, bg="#ffe5e5", font=("Segoe UI", 9))
+    if rated: btn_dislike.config(state=tk.DISABLED) # Disabilitato perché già valutato
     btn_dislike.grid(row=0, column=0, padx=5, pady=5)
 
-    btn_like = tk.Button(btn_frame, text="👍 Mi piace!\n(Mantieni)", command=lambda: action("like"), width=16, bg="#e5ffe5", font=("Segoe UI", 9))
+    btn_like = tk.Button(btn_frame, text=text_like, command=lambda: action("like"), width=16, bg="#e5ffe5", font=("Segoe UI", 9))
+    if rated: btn_like.config(state=tk.DISABLED) # Disabilitato perché già valutato
     btn_like.grid(row=0, column=1, padx=5, pady=5)
 
     btn_change = tk.Button(btn_frame, text="🔄 Cambia\n(Senza valutare)", command=lambda: action("change"), width=16, bg="#f0f0f0", font=("Segoe UI", 9))
