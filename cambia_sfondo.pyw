@@ -183,6 +183,17 @@ def main():
         frames_container = tk.Frame(manage_win)
         frames_container.pack(fill=tk.BOTH, expand=True, padx=10)
 
+        def treeview_sort_column(tv, col, reverse):
+            l = [(tv.set(k, col), k) for k in tv.get_children('')]
+            try:
+                l.sort(key=lambda t: int(t[0]), reverse=reverse)
+            except ValueError:
+                l.sort(key=lambda t: t[0].lower(), reverse=reverse)
+            
+            for index, (val, k) in enumerate(l):
+                tv.move(k, '', index)
+            tv.heading(col, command=lambda _col=col: treeview_sort_column(tv, _col, not reverse))
+
         def setup_section(parent, title, items):
             f_sec = tk.Frame(parent)
             f_sec.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
@@ -190,14 +201,14 @@ def main():
             
             cols = ("cat", "p", "s")
             tree = ttk.Treeview(f_sec, columns=cols, show="headings", height=12)
-            tree.heading("cat", text="Categoria")
-            tree.heading("p", text="👍")
-            tree.heading("s", text="👎")
+            tree.heading("cat", text="Categoria", command=lambda: treeview_sort_column(tree, "cat", False))
+            tree.heading("p", text="👍", command=lambda: treeview_sort_column(tree, "p", False))
+            tree.heading("s", text="👎", command=lambda: treeview_sort_column(tree, "s", False))
             tree.column("cat", width=120, anchor=tk.W)
             tree.column("p", width=40, anchor=tk.CENTER)
             tree.column("s", width=40, anchor=tk.CENTER)
             
-            for c in items:
+            for c in sorted(items, key=str.lower):
                 p = stats.get(c, {}).get("positivi", 0)
                 s = stats.get(c, {}).get("scarti", 0)
                 tot = p + s
