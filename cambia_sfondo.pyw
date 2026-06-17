@@ -73,10 +73,16 @@ def main():
     root = tk.Tk()
     
     info = get_current_wallpaper_info()
+    
+    # Troncamento del titolo se è troppo lungo
+    display_title = info["title"]
+    if len(display_title) > 60:
+        display_title = display_title[:57] + "..."
+        
     if info.get("category"):
-        title_str = f'{info["title"]} ({info["source"]} - {info["category"]})'
+        title_str = f'{display_title} ({info["source"]} - {info["category"]})'
     else:
-        title_str = f'{info["title"]} ({info["source"]})'
+        title_str = f'{display_title} ({info["source"]})'
     
     root.title("Valutazione Sfondo")
     
