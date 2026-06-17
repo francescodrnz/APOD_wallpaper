@@ -104,13 +104,22 @@ def main():
             info_win.geometry("500x400")
             info_win.grab_set()
             
-            txt_area = tk.Text(info_win, wrap=tk.WORD, font=("Segoe UI", 10), padx=10, pady=10)
+            btn_close = tk.Button(info_win, text="Chiudi", command=info_win.destroy, width=15)
+            btn_close.pack(side=tk.BOTTOM, pady=10)
+
+            # Aggiungiamo uno scrollbar in caso di testo molto lungo
+            frame_txt = tk.Frame(info_win)
+            frame_txt.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 0))
+
+            scrollbar = tk.Scrollbar(frame_txt)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            txt_area = tk.Text(frame_txt, wrap=tk.WORD, font=("Segoe UI", 10), yscrollcommand=scrollbar.set)
             txt_area.insert(tk.END, info["content"])
             txt_area.config(state=tk.DISABLED)
-            txt_area.pack(fill=tk.BOTH, expand=True)
+            txt_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
             
-            btn_close = tk.Button(info_win, text="Chiudi", command=info_win.destroy, width=15)
-            btn_close.pack(pady=10)
+            scrollbar.config(command=txt_area.yview)
             return
 
         cat = info["cat_or_source"]
