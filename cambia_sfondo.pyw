@@ -16,7 +16,19 @@ STATS_FILE = BASE_DIR / "statistiche.json"
 CONFIG_FILE = BASE_DIR / "config.json"
 APOD_SCRIPT = BASE_DIR / "apod.pyw"
 
+SPI_GETDESKWALLPAPER = 0x0073
+
 def get_current_wallpaper():
+    # Fonte primaria: l'API di sistema. Su alcune installazioni Windows il valore
+    # nel registro non viene piu' aggiornato e resta fermo a uno sfondo vecchio.
+    try:
+        buf = ctypes.create_unicode_buffer(520)
+        if ctypes.windll.user32.SystemParametersInfoW(SPI_GETDESKWALLPAPER, 520, buf, 0) and buf.value:
+            path = Path(buf.value)
+            if path.exists():
+                return path
+    except:
+        pass
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", 0, winreg.KEY_READ) as key:
             wallpaper_path = winreg.QueryValueEx(key, "Wallpaper")[0]
