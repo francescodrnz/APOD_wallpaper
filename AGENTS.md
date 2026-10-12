@@ -12,7 +12,7 @@ Cambia-sfondo per Windows 10/11 in Python. Scarica un'immagine da una fonte casu
 |---|---|
 | `apod.pyw` | Script headless: sceglie una fonte, scarica, ridimensiona, imposta lo sfondo, scrive i metadati, pulisce la cache. Pensato per l'avvio automatico al login. |
 | `cambia_sfondo.pyw` | Finestra Tkinter: mostra info sullo sfondo attuale, like/dislike, scorrimento avanti/indietro tra gli sfondi in cache, gestione categorie e statistiche. Per cambiare sfondo lancia `apod.pyw` come sottoprocesso. |
-| `config.json` | Chiavi API e liste di categorie. **Ignorato da git, contiene segreti: non committarlo e non riportarne il contenuto.** Viene generato al primo avvio di `apod.pyw`. |
+| `config.json` | Chiave Unsplash (opzionale) e liste di categorie. **Ignorato da git, contiene segreti: non committarlo e non riportarne il contenuto.** Viene generato al primo avvio di `apod.pyw`. |
 | `statistiche.json` | Voti per categoria (`positivi` / `scarti`). Ignorato da git. |
 | `apod_images/` | Cache locale di immagini e metadati. Ignorata da git. |
 
@@ -46,15 +46,15 @@ Esclusione automatica delle categorie (`get_valid_categories`): una categoria co
   - oggi: `https://science.nasa.gov/wp-json/wp/v2/apod-basic?per_page=1` (restituisce una lista)
   - una data: `https://science.nasa.gov/wp-json/wp/v2/apod-basic/YYMMDD` (data nel formato legacy)
   - documentazione: https://api.nasa.gov/assets/files/apod/APOD-APIs-and-RSS-info.pdf
-  - Non serve una chiave API.
+  - Non serve nessuna chiave API.
   - `hdurl` contiene parametri di ridimensionamento. Per avere l'originale a piena risoluzione togli la query e sostituisci `/dynamicimage/assets/` con `/content/dam/`.
   - Per molte date vecchie (soprattutto anni '90) `hdurl` è un segnaposto generico (`.../cosmic-origins/images/misc/news-thumbnail.png`). Queste date vengono scartate controllando che l'URL contenga `/apod/`. La foto vera sarebbe in `/apod-basic/YYMMDD/html`, ma di solito è una GIF piccola e inadatta come sfondo.
   - `media_type` può valere `video` o `iframe`: in quel caso la data viene scartata.
   - `explanation` e `title` contengono HTML, passali per `_strip_tags`.
 - **NASA Image Library** (`images-api.nasa.gov`): non serve una chiave. Usa una pagina casuale tra le prime 10 per variare i risultati.
-- **Unsplash**: richiede `UNSPLASH_API_KEY`. Il fallback senza chiave (`source.unsplash.com`) è un servizio dismesso.
+- **Unsplash**: fonte opzionale, l'unica che richiede una chiave (`UNSPLASH_API_KEY`). Se la chiave è vuota o è ancora il segnaposto `UNSPLASH_KEY_PLACEHOLDER`, `get_unsplash_image` restituisce subito `None` e restano le fonti NASA. Il vecchio fallback senza chiave (`source.unsplash.com`) è stato chiuso e non va reintrodotto.
 
-`NASA_API_KEY` in `config.json` al momento non è usata da nessuna fonte.
+Il progetto deve funzionare anche senza nessuna chiave. Al primo avvio `load_config()` crea `config.json` e chiede se aprirlo per inserire la chiave Unsplash: con "No" prosegue, con "Sì" apre il file ed esce. Eventuali `NASA_API_KEY` nei vecchi `config.json` vengono ignorate.
 
 ## Convenzioni
 
@@ -75,6 +75,6 @@ print(m.get_apod_data())              # oggi
 print(m.get_apod_data("2010-03-15"))  # data specifica
 ```
 
-Attenzione: l'import esegue `load_config()`. Se `config.json` non esiste, lo crea, mostra un popup ed esce.
+Attenzione: l'import esegue `load_config()`. Se `config.json` non esiste, lo crea e mostra un popup bloccante. Per provare il primo avvio, lavora su una copia di `apod.pyw` in una cartella temporanea e sostituisci `ctypes.windll.user32.MessageBoxW` con una funzione finta.
 
 Lanciare `apod.pyw` o usare la finestra modifica lo sfondo e il colore d'accento reali dell'utente, e il voto scrive su `statistiche.json`. Chiedi prima di farlo.

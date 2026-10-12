@@ -13,10 +13,9 @@ For the features to work correctly, set these Windows settings:
 1. **Background:** Set fit to **Fill** (Riempi).
 2. **Colors:** Set "Accent color" to **Automatic**.
 
-## API Keys (Free)
-Before installing, get your free keys:
-* **NASA:** [api.nasa.gov](https://api.nasa.gov/)
-* **Unsplash:** [unsplash.com/developers](https://unsplash.com/developers) (Register -> Create a new App -> Copy Access Key)
+## API Keys
+* **NASA (APOD & Image Library):** no key needed.
+* **Unsplash (optional):** without a key the script only uses NASA sources. To add Unsplash images, get a free key at [unsplash.com/developers](https://unsplash.com/developers) (Register -> Create a new App -> Copy Access Key).
 
 ## Installation & Setup
 
@@ -25,22 +24,18 @@ Before installing, get your free keys:
    git clone https://github.com/francescodrnz/APOD_wallpaper
    cd APOD_wallpaper
    ```
-2. **First Run (Generate Config):**
-   Double-click `apod.pyw`. 
-   * It will show a popup creating `config.json`.
-   * The script will exit automatically.
+2. **First Run:**
+   Double-click `apod.pyw`. It creates `config.json` and asks if you want to open it to add an Unsplash key.
+   * **No:** it continues and sets your first wallpaper using NASA sources only.
+   * **Yes:** it opens `config.json` and exits, so you can paste your key.
 
-3. **Add Keys:**
-   Open the newly created `config.json` with a text editor and paste your API keys:
+3. **Add the Unsplash Key (optional):**
+   In `config.json`, replace the placeholder with your Access Key, then run `apod.pyw` again:
    ```json
    {
-       "NASA_API_KEY": "DEMO_KEY",
        "UNSPLASH_API_KEY": "your_unsplash_key_here"
    }
    ```
-   
-4. **Run Again:**
-   Double-click `apod.pyw`. It will now download your first wallpaper.
 
 ## UI & Statistics (`cambia_sfondo.pyw`)
 You can evaluate and manage your wallpapers using the interactive UI. **💡 Recommended use:** Create a shortcut to `cambia_sfondo.pyw` on your Desktop for quick access!

@@ -37,6 +37,7 @@ MAX_RETRIES = 3
 TIMEOUT = 10
 START_DATE = datetime(1995, 6, 16)
 STATS_FILE = Path(__file__).parent / "statistiche.json"
+UNSPLASH_KEY_PLACEHOLDER = "your_unsplash_key_here"
 
 def show_popup(title, message, style=0x40):
     """
@@ -48,8 +49,7 @@ def show_popup(title, message, style=0x40):
 
 def load_config():
     default_config = {
-        "NASA_API_KEY": "DEMO_KEY",
-        "UNSPLASH_API_KEY": "your_unsplash_key_here",
+        "UNSPLASH_API_KEY": UNSPLASH_KEY_PLACEHOLDER,
         "unsplash_categories": [
             "nature", "landscape", "space", "mountain", "ocean", "sky", "forest", "desert", "aurora", "milkyway",
             "astrophotography", "stars", "night sky", "cosmos", "observatory", "telescope",
@@ -68,16 +68,19 @@ def load_config():
             
             # Popup con scelta Sì/No (0x04 = MB_YESNO)
             response = show_popup(
-                "Configurazione Richiesta", 
-                f"Il file config.json è stato creato.\n\nVuoi aprirlo ora per inserire le tue chiavi?",
-                0x04 | 0x40 
+                "Configurazione Creata",
+                "Il file config.json è stato creato.\n\n"
+                "Le fonti NASA funzionano senza chiavi. Per aggiungere anche le immagini Unsplash "
+                "serve una chiave gratuita (opzionale).\n\n"
+                "Vuoi aprire config.json ora per inserirla?",
+                0x04 | 0x40
             )
-            
-            # Se l'utente preme Sì (ID 6), apre il file
+
+            # Se l'utente preme Sì (ID 6), apre il file e si ferma; altrimenti prosegue con le sole fonti NASA
             if response == 6:
                 os.startfile(CONFIG_FILE)
-                
-            sys.exit(0)
+                sys.exit(0)
+            return default_config
         except Exception as e:
             show_popup("Errore Critico", f"Impossibile creare config.json: {e}", 0x10)
             return default_config
@@ -97,21 +100,17 @@ def load_config():
         if migrated:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=4)
-        
-        nasa_key = config.get("NASA_API_KEY", "")
-        unsplash_key = config.get("UNSPLASH_API_KEY", "")
-        
-        if "INSERISCI" in nasa_key or "INSERISCI" in unsplash_key:
-            show_popup("Configurazione Incompleta", "Chiavi API non impostate in config.json.", 0x30)
-            
+
         return config
     except Exception as e:
         show_popup("Errore Config", f"File config.json corrotto: {e}", 0x10)
         return default_config
 
 config = load_config()
-NASA_API_KEY = config.get("NASA_API_KEY", "")
-UNSPLASH_API_KEY = config.get("UNSPLASH_API_KEY", "")
+UNSPLASH_API_KEY = config.get("UNSPLASH_API_KEY", "").strip()
+# Chiave assente o ancora segnaposto: Unsplash viene saltato e restano le fonti NASA
+if UNSPLASH_API_KEY == UNSPLASH_KEY_PLACEHOLDER or "INSERISCI" in UNSPLASH_API_KEY:
+    UNSPLASH_API_KEY = ""
 
 # --- CORE FUNCTIONS ---
 
@@ -259,44 +258,35 @@ def get_apod_data(date=None):
     except: return None
 
 def get_unsplash_image():
+    # Fonte opzionale: senza chiave viene saltata (il vecchio source.unsplash.com e' stato chiuso)
+    if not UNSPLASH_API_KEY: return None
     themes = config.get("unsplash_categories", ["space"])
     valid_themes = get_valid_categories(themes)
     if not valid_themes: return None
     theme = random.choice(valid_themes)
     try:
-        if UNSPLASH_API_KEY and "INSERISCI" not in UNSPLASH_API_KEY:
-            url = f"https://api.unsplash.com/photos/random?query={theme}&orientation=landscape"
-            headers = {"Authorization": f"Client-ID {UNSPLASH_API_KEY}"}
-            res = requests.get(url, headers=headers, timeout=TIMEOUT)
-            res.raise_for_status()
-            data = res.json()
-            
-            # Unsplash spesso ha 'alt_description' o 'description'
-            raw_title = data.get("alt_description") or data.get("description") or f"Unsplash {theme}"
-            raw_desc = data.get("description") or data.get("alt_description") or "Nessuna descrizione disponibile."
-            
-            # Costruiamo i metadati
-            full_desc = f"Photo by {data.get('user', {}).get('name', 'Unknown')}.\n{raw_desc}"
-            created_date = data.get("created_at", datetime.now().strftime('%Y-%m-%d'))[:10]
-            
-            return {
-                "url": data["urls"]["raw"] + "&w=2560&h=1440&fit=max&q=85",
-                "title": raw_title.capitalize(),
-                "description": full_desc, 
-                "date": created_date,
-                "source": "Unsplash", "category": theme
-            }
-        else:
-            final_url = f"https://source.unsplash.com/2560x1440/?{theme}"
-            res = requests.get(final_url, timeout=TIMEOUT)
-            if res.status_code == 200:
-                return {
-                    "url": res.url, "title": f"Unsplash {theme}",
-                    "description": "Random Unsplash Image", "date": datetime.now().strftime('%Y-%m-%d'),
-                    "source": "Unsplash (Public)", "category": theme
-                }
-    except: pass
-    return None
+        url = f"https://api.unsplash.com/photos/random?query={theme}&orientation=landscape"
+        headers = {"Authorization": f"Client-ID {UNSPLASH_API_KEY}"}
+        res = requests.get(url, headers=headers, timeout=TIMEOUT)
+        res.raise_for_status()
+        data = res.json()
+
+        # Unsplash spesso ha 'alt_description' o 'description'
+        raw_title = data.get("alt_description") or data.get("description") or f"Unsplash {theme}"
+        raw_desc = data.get("description") or data.get("alt_description") or "Nessuna descrizione disponibile."
+
+        # Costruiamo i metadati
+        full_desc = f"Photo by {data.get('user', {}).get('name', 'Unknown')}.\n{raw_desc}"
+        created_date = data.get("created_at", datetime.now().strftime('%Y-%m-%d'))[:10]
+
+        return {
+            "url": data["urls"]["raw"] + "&w=2560&h=1440&fit=max&q=85",
+            "title": raw_title.capitalize(),
+            "description": full_desc,
+            "date": created_date,
+            "source": "Unsplash", "category": theme
+        }
+    except: return None
 
 def get_nasa_image_library():
     queries = config.get("nasa_categories", ["galaxy"])
