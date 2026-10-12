@@ -11,7 +11,7 @@ Automated wallpaper switcher for Windows 10/11. Fetches high-res imagery from **
 ## Windows Requirements
 For the features to work correctly, set these Windows settings:
 1. **Background:** Set fit to **Fill** (Riempi).
-2. **Colors:** Set "Accent color" to **Automatic**.
+2. **Colors:** Enable "Show accent color on Start and taskbar" if you want to see it there. The script picks the accent color itself and turns off Windows' "Automatic" option.
 
 ## API Keys
 * **NASA (APOD & Image Library):** no key needed.
@@ -52,7 +52,7 @@ To run silently at login:
 3. Move the shortcut into the opened folder.
 
 ## Troubleshooting
-* **Windows Color is Blue/Default:** Ensure "Accent Color" is set to **Automatic**. If the image is pure black (e.g., deep space), the script forces a Dark Grey to prevent Windows from resetting to blue.
+* **Windows Color is Blue/Default:** The script writes the full accent palette and turns off Windows' "Automatic" accent option, which falls back to blue on very dark images. If the image is near-black (e.g., deep space), the script uses a dark grey. Some apps only pick up the new color after a restart or a sign-out.
 * **Black Bars/Cropped Image:** Ensure Windows Background fit is set to **Fill**. The script handles the aspect ratio internally.
 * **Missing Config Popup:** Check that `config.json` is not excluded by your antivirus or file permissions.
 

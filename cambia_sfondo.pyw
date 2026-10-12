@@ -42,6 +42,11 @@ def set_wallpaper(path):
         return True
     except: return False
 
+def _accent_shade(rgb, factor):
+    # factor > 0 schiarisce verso il bianco, factor < 0 scurisce verso il nero
+    target = 255 if factor > 0 else 0
+    return tuple(int(c + (target - c) * abs(factor)) for c in rgb)
+
 def update_windows_accent(image_path):
     try:
         with Image.open(image_path) as img:
@@ -53,18 +58,35 @@ def update_windows_accent(image_path):
             colors.sort(key=lambda x: x[0], reverse=True)
             r, g, b = colors[0][1]
 
-            if (r + g + b) < 80:
-                r, g, b = 40, 40, 40
+        if (r + g + b) < 80:
+            r, g, b = 40, 40, 40
 
-            accent_color_dword = (0 << 24) | (b << 16) | (g << 8) | r
-            
-            key_path = r"Software\Microsoft\Windows\DWM"
-            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-                winreg.SetValueEx(key, "AccentColor", 0, winreg.REG_DWORD, accent_color_dword)
-                winreg.SetValueEx(key, "ColorPrevalence", 0, winreg.REG_DWORD, 1)
-                
-            ctypes.windll.user32.SystemParametersInfoW(20, 0, str(image_path), 3)
-            return True
+        base = (r, g, b)
+        # Ordine della AccentPalette: tre tonalita' chiare, la base, tre scure e una extra
+        shades = [_accent_shade(base, f) for f in (0.75, 0.5, 0.25, 0, -0.2, -0.4, -0.6, -0.4)]
+        palette = bytes(v for sr, sg, sb in shades for v in (sr, sg, sb, 0))
+        abgr = lambda c: 0xFF000000 | (c[2] << 16) | (c[1] << 8) | c[0]
+        argb = 0xC4000000 | (r << 16) | (g << 8) | b
+
+        # Windows usa la AccentPalette, non DWM\AccentColor. Con la scelta automatica attiva
+        # la ricalcola lui dallo sfondo e su quelli molto scuri ripiega sul blu predefinito.
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop") as key:
+            winreg.SetValueEx(key, "AutoColorization", 0, winreg.REG_DWORD, 0)
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent") as key:
+            winreg.SetValueEx(key, "AccentPalette", 0, winreg.REG_BINARY, palette)
+            winreg.SetValueEx(key, "AccentColorMenu", 0, winreg.REG_DWORD, abgr(base))
+            winreg.SetValueEx(key, "StartColorMenu", 0, winreg.REG_DWORD, abgr(shades[4]))
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\DWM") as key:
+            winreg.SetValueEx(key, "AccentColor", 0, winreg.REG_DWORD, abgr(base))
+            winreg.SetValueEx(key, "ColorizationColor", 0, winreg.REG_DWORD, argb)
+            winreg.SetValueEx(key, "ColorizationAfterglow", 0, winreg.REG_DWORD, argb)
+            winreg.SetValueEx(key, "ColorPrevalence", 0, winreg.REG_DWORD, 1)
+
+        # Avvisa la shell del cambio colore (WM_SETTINGCHANGE "ImmersiveColorSet")
+        ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001A, 0, "ImmersiveColorSet", 0x0002, 5000, None)
+        return True
     except:
         return False
 
