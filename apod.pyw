@@ -4,6 +4,8 @@ import os
 import ctypes
 import random
 import json
+import re
+import html
 import sys
 from datetime import datetime, timedelta, timezone
 import winreg
@@ -229,17 +231,29 @@ def get_valid_categories(source_list):
         except: pass
     return [c for c in source_list if c not in excluded]
 
+def _strip_tags(fragment):
+    text = re.sub(r"<[^>]+>", "", fragment)
+    return re.sub(r"\s+", " ", html.unescape(text)).strip()
+
 def get_apod_data(date=None):
-    url = f"https://api.nasa.gov/planetary/apod?api_key={NASA_API_KEY}&hd=True"
-    if date: url += f"&date={date}"
+    # APOD e' migrato su science.nasa.gov: la vecchia api.nasa.gov/planetary/apod restituisce
+    # il logo NASA. Nuova API (APOD Basic JSON), le date sono nel formato legacy YYMMDD.
+    url = "https://science.nasa.gov/wp-json/wp/v2/apod-basic"
+    url += f"/{datetime.strptime(date, '%Y-%m-%d'):%y%m%d}" if date else "?per_page=1"
     try:
         res = requests.get(url, timeout=TIMEOUT)
         res.raise_for_status()
         data = res.json()
-        if data.get("media_type") != "image": return None
+        if isinstance(data, list): data = data[0]
+        if data.get("media_type") != "image" or not data.get("hdurl"): return None
+        # Il percorso content/dam senza parametri restituisce l'originale a piena risoluzione
+        img_url = data["hdurl"].split("?")[0].replace("/dynamicimage/assets/", "/content/dam/")
+        # Alcune date vecchie hanno un'immagine segnaposto generica al posto della foto APOD
+        if "/apod/" not in img_url: return None
+        description = re.sub(r"^(Explanation\s*:\s*)+", "", _strip_tags(data.get("explanation", "")))
         return {
-            "url": data["hdurl"], "title": data.get("title", "APOD"),
-            "description": data.get("explanation", ""), "date": data.get("date"),
+            "url": img_url, "title": _strip_tags(data.get("title", "APOD")),
+            "description": description, "date": data.get("date"),
             "source": "NASA APOD"
         }
     except: return None
