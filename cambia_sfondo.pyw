@@ -1,129 +1,23 @@
 import subprocess
-import winreg
 import json
 import sys
-import os
 import time
-import ctypes
 import tkinter as tk
 from tkinter import ttk
-from pathlib import Path
-from PIL import Image
 
-# --- CONFIGURAZIONI ---
-BASE_DIR = Path(__file__).parent
-STATS_FILE = BASE_DIR / "statistiche.json"
-CONFIG_FILE = BASE_DIR / "config.json"
+from comune import (BASE_DIR, CONFIG_FILE, STATS_FILE, get_current_wallpaper, set_wallpaper,
+                    update_windows_accent, load_stats, is_excluded, read_info, mark_rated,
+                    list_history, current_index)
+
 APOD_SCRIPT = BASE_DIR / "apod.pyw"
 
-SPI_GETDESKWALLPAPER = 0x0073
-
-def get_current_wallpaper():
-    # Fonte primaria: l'API di sistema. Su alcune installazioni Windows il valore
-    # nel registro non viene piu' aggiornato e resta fermo a uno sfondo vecchio.
-    try:
-        buf = ctypes.create_unicode_buffer(520)
-        if ctypes.windll.user32.SystemParametersInfoW(SPI_GETDESKWALLPAPER, 520, buf, 0) and buf.value:
-            path = Path(buf.value)
-            if path.exists():
-                return path
-    except:
-        pass
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", 0, winreg.KEY_READ) as key:
-            wallpaper_path = winreg.QueryValueEx(key, "Wallpaper")[0]
-            return Path(wallpaper_path) if wallpaper_path else None
-    except:
-        return None
-
-def set_wallpaper(path):
-    try:
-        ctypes.windll.user32.SystemParametersInfoW(20, 0, str(path), 3)
-        return True
-    except: return False
-
-def _accent_shade(rgb, factor):
-    # factor > 0 schiarisce verso il bianco, factor < 0 scurisce verso il nero
-    target = 255 if factor > 0 else 0
-    return tuple(int(c + (target - c) * abs(factor)) for c in rgb)
-
-def update_windows_accent(image_path):
-    try:
-        with Image.open(image_path) as img:
-            img.thumbnail((100, 100))
-            img = img.convert("RGB")
-            colors = img.getcolors(10000)
-            if not colors: return False
-            
-            colors.sort(key=lambda x: x[0], reverse=True)
-            r, g, b = colors[0][1]
-
-        if (r + g + b) < 80:
-            r, g, b = 40, 40, 40
-
-        base = (r, g, b)
-        # Ordine della AccentPalette: tre tonalita' chiare, la base, tre scure e una extra
-        shades = [_accent_shade(base, f) for f in (0.75, 0.5, 0.25, 0, -0.2, -0.4, -0.6, -0.4)]
-        palette = bytes(v for sr, sg, sb in shades for v in (sr, sg, sb, 0))
-        abgr = lambda c: 0xFF000000 | (c[2] << 16) | (c[1] << 8) | c[0]
-        argb = 0xC4000000 | (r << 16) | (g << 8) | b
-
-        # Windows usa la AccentPalette, non DWM\AccentColor. Con la scelta automatica attiva
-        # la ricalcola lui dallo sfondo e su quelli molto scuri ripiega sul blu predefinito.
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop") as key:
-            winreg.SetValueEx(key, "AutoColorization", 0, winreg.REG_DWORD, 0)
-
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent") as key:
-            winreg.SetValueEx(key, "AccentPalette", 0, winreg.REG_BINARY, palette)
-            winreg.SetValueEx(key, "AccentColorMenu", 0, winreg.REG_DWORD, abgr(base))
-            winreg.SetValueEx(key, "StartColorMenu", 0, winreg.REG_DWORD, abgr(shades[4]))
-
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\DWM") as key:
-            winreg.SetValueEx(key, "AccentColor", 0, winreg.REG_DWORD, abgr(base))
-            winreg.SetValueEx(key, "ColorizationColor", 0, winreg.REG_DWORD, argb)
-            winreg.SetValueEx(key, "ColorizationAfterglow", 0, winreg.REG_DWORD, argb)
-            winreg.SetValueEx(key, "ColorPrevalence", 0, winreg.REG_DWORD, 1)
-
-        # Avvisa la shell del cambio colore (WM_SETTINGCHANGE "ImmersiveColorSet")
-        ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001A, 0, "ImmersiveColorSet", 0x0002, 5000, None)
-        return True
-    except:
-        return False
-
 def get_current_wallpaper_info():
-    info = {"title": "Sfondo Sconosciuto", "source": "Sconosciuto", "category": None, "content": "Nessuna informazione disponibile per questo sfondo.", "cat_or_source": None, "rated": False}
     wp_path = get_current_wallpaper()
-    if wp_path and wp_path.exists():
-        txt_path = wp_path.with_suffix(".txt")
-        if txt_path.exists():
-            try:
-                content = txt_path.read_text(encoding="utf-8")
-                info["content"] = content
-                lines = content.splitlines()
-                for line in lines:
-                    if line.startswith("Category/Theme:"):
-                        info["category"] = line.replace("Category/Theme:", "").strip()
-                    elif line.startswith("Source:"):
-                        info["source"] = line.replace("Source:", "").strip()
-                    elif line.startswith("Title:"):
-                        info["title"] = line.replace("Title:", "").strip()
-                    elif line.startswith("Valutato:"):
-                        info["rated"] = line.replace("Valutato:", "").strip().lower() == "si"
-                
-                info["cat_or_source"] = info["category"] if info["category"] else info["source"]
-            except:
-                pass
-    return info
+    return read_info(wp_path.with_suffix(".txt") if wp_path else None)
 
 def update_stats(category, is_positive):
-    stats = {}
-    
-    if STATS_FILE.exists():
-        try:
-            with open(STATS_FILE, "r", encoding="utf-8") as f:
-                stats = json.load(f)
-        except: pass
-        
+    stats = load_stats()
+
     if category not in stats:
         stats[category] = {"scarti": 0, "positivi": 0}
         
@@ -135,8 +29,7 @@ def update_stats(category, is_positive):
     try:
         with open(STATS_FILE, "w", encoding="utf-8") as f:
             json.dump(stats, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        print(f"Errore nel salvataggio: {e}")
+    except: pass
 
 def main():
     root = tk.Tk()
@@ -188,6 +81,13 @@ def main():
     lbl_status = tk.Label(root, text="", font=("Segoe UI", 9, "italic"))
     lbl_status.pack(pady=2)
 
+    all_buttons = (btn_dislike, btn_like, btn_change, btn_info, btn_manage, btn_prev, btn_next)
+
+    def disable_buttons(status_msg):
+        for btn in all_buttons:
+            btn.config(state=tk.DISABLED)
+        lbl_status.config(text=status_msg, fg="blue")
+
     def refresh_ui(status_msg="", color="green"):
         nonlocal info
         info = get_current_wallpaper_info()
@@ -214,13 +114,9 @@ def main():
         btn_manage.config(state=tk.NORMAL)
         
         # History check
-        files = sorted((BASE_DIR / "apod_images").glob("wallpaper_*.jpg"), key=lambda f: f.stat().st_mtime)
-        curr = get_current_wallpaper()
-        try:
-            idx = next(i for i, f in enumerate(files) if curr and f.name == curr.name)
-        except StopIteration:
-            idx = len(files) - 1
-            
+        files = list_history()
+        idx = current_index(files, get_current_wallpaper())
+
         btn_prev.config(state=tk.NORMAL if idx > 0 else tk.DISABLED)
         btn_next.config(state=tk.NORMAL if idx < len(files) - 1 else tk.DISABLED)
         
@@ -229,49 +125,32 @@ def main():
         else:
             lbl_status.config(text="")
 
-    def check_process(proc, start_time):
+    def check_process(proc, start_time, previous_wp):
         if proc.poll() is None:
             elapsed = int(time.time() - start_time)
             lbl_status.config(text=f"⏳ Sfondo in download... ({elapsed}s)", fg="blue")
-            root.after(1000, check_process, proc, start_time)
-        else:
+            root.after(250, check_process, proc, start_time, previous_wp)
+        elif get_current_wallpaper() != previous_wp:
             refresh_ui("✅ Sfondo cambiato con successo!", "green")
+        else:
+            refresh_ui("⚠️ Nessuno sfondo trovato, riprova più tardi", "red")
 
     def run_apod():
         if APOD_SCRIPT.exists():
-            btn_dislike.config(state=tk.DISABLED)
-            btn_like.config(state=tk.DISABLED)
-            btn_change.config(state=tk.DISABLED)
-            btn_info.config(state=tk.DISABLED)
-            btn_manage.config(state=tk.DISABLED)
-            btn_prev.config(state=tk.DISABLED)
-            btn_next.config(state=tk.DISABLED)
-            lbl_status.config(text="⏳ Sfondo in download... (0s)", fg="blue")
+            disable_buttons("⏳ Sfondo in download... (0s)")
+            previous_wp = get_current_wallpaper()
             proc = subprocess.Popen([sys.executable, str(APOD_SCRIPT)], cwd=str(BASE_DIR), creationflags=subprocess.CREATE_NO_WINDOW)
-            root.after(1000, check_process, proc, time.time())
+            root.after(250, check_process, proc, time.time(), previous_wp)
 
     def cycle_wallpaper(direction):
-        files = sorted((BASE_DIR / "apod_images").glob("wallpaper_*.jpg"), key=lambda f: f.stat().st_mtime)
+        files = list_history()
         if not files: return
-        
-        curr = get_current_wallpaper()
-        try:
-            idx = next(i for i, f in enumerate(files) if curr and f.name == curr.name)
-        except StopIteration:
-            idx = len(files) - 1
 
-        new_idx = idx + direction
+        new_idx = current_index(files, get_current_wallpaper()) + direction
         if 0 <= new_idx < len(files):
             new_wp = files[new_idx]
-            
-            btn_dislike.config(state=tk.DISABLED)
-            btn_like.config(state=tk.DISABLED)
-            btn_change.config(state=tk.DISABLED)
-            btn_info.config(state=tk.DISABLED)
-            btn_manage.config(state=tk.DISABLED)
-            btn_prev.config(state=tk.DISABLED)
-            btn_next.config(state=tk.DISABLED)
-            lbl_status.config(text="⏳ Impostazione sfondo...", fg="blue")
+
+            disable_buttons("⏳ Impostazione sfondo...")
             root.update()
             
             if set_wallpaper(new_wp):
@@ -307,46 +186,37 @@ def main():
         cat = info["cat_or_source"]
         rated = info.get("rated", False)
 
-        def mark_rated():
+        def mark_current_rated():
             wp_path = get_current_wallpaper()
             if wp_path:
-                txt_path = wp_path.with_suffix(".txt")
-                if txt_path.exists():
-                    try:
-                        with open(txt_path, "a", encoding="utf-8") as f:
-                            f.write("\nValutato: Si\n")
-                    except: pass
+                mark_rated(wp_path.with_suffix(".txt"))
 
         if choice == "like":
-            if cat and not rated: 
+            if cat and not rated:
                 update_stats(cat, is_positive=True)
-                mark_rated()
+                mark_current_rated()
             refresh_ui("✅ Valutazione salvata!", "green")
         elif choice == "dislike":
-            if cat and not rated: 
+            if cat and not rated:
                 update_stats(cat, is_positive=False)
-                mark_rated()
+                mark_current_rated()
             run_apod()
         elif choice == "change":
             run_apod()
 
     def manage_categories():
-        manage_win = tk.Toplevel(root)
-        manage_win.title("Gestione & Statistiche")
-        manage_win.geometry("600x450")
-        manage_win.grab_set()
-
+        # Config letta prima di aprire la finestra: se manca non resta una finestra vuota
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
         except: return
-        
-        stats = {}
-        if STATS_FILE.exists():
-            try:
-                with open(STATS_FILE, "r", encoding="utf-8") as f:
-                    stats = json.load(f)
-            except: pass
+
+        stats = load_stats()
+
+        manage_win = tk.Toplevel(root)
+        manage_win.title("Gestione & Statistiche")
+        manage_win.geometry("600x450")
+        manage_win.grab_set()
 
         lbl_info = tk.Label(manage_win, text="Gestisci le categorie e visualizza i voti (🔴 = Esclusa in automatico)", pady=10)
         lbl_info.pack()
@@ -379,12 +249,13 @@ def main():
             tree.column("p", width=40, anchor=tk.CENTER)
             tree.column("s", width=40, anchor=tk.CENTER)
             
+            def insert_item(c):
+                counts = stats.get(c, {})
+                display_cat = f"{c} 🔴" if is_excluded(counts) else c
+                tree.insert("", tk.END, text=c, values=(display_cat, counts.get("positivi", 0), counts.get("scarti", 0)))
+
             for c in sorted(items, key=str.lower):
-                p = stats.get(c, {}).get("positivi", 0)
-                s = stats.get(c, {}).get("scarti", 0)
-                tot = p + s
-                display_cat = f"{c} 🔴" if (tot > 15 and (s / tot) > 0.8) else c
-                tree.insert("", tk.END, text=c, values=(display_cat, p, s))
+                insert_item(c)
             tree.pack(fill=tk.BOTH, expand=True)
             
             entry = tk.Entry(f_sec)
@@ -395,11 +266,7 @@ def main():
                 if val:
                     existing = [tree.item(child, "text") for child in tree.get_children()]
                     if val not in existing:
-                        p = stats.get(val, {}).get("positivi", 0)
-                        s = stats.get(val, {}).get("scarti", 0)
-                        tot = p + s
-                        display_cat = f"{val} 🔴" if (tot > 15 and (s / tot) > 0.8) else val
-                        tree.insert("", tk.END, text=val, values=(display_cat, p, s))
+                        insert_item(val)
                         entry.delete(0, tk.END)
             
             def rem_item():

@@ -1,43 +1,34 @@
 import subprocess
-import importlib
 import os
+import io
 import ctypes
 import random
 import json
 import re
 import html
 import sys
-from datetime import datetime, timedelta, timezone
-import winreg
-from pathlib import Path
-import textwrap
+import time
+from datetime import datetime, timedelta
 
-# --- GESTIONE DIPENDENZE ---
-def install_dependencies():
-    required_packages = {"requests": "requests", "pillow": "PIL"}
-    for pip_name, import_name in required_packages.items():
-        try:
-            importlib.import_module(import_name)
-        except ImportError:
-            try:
-                # Installazione silenziosa
-                subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name], 
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except:
-                pass
-
-install_dependencies()
+# comune installa requests e pillow se mancano, quindi va importato prima di loro
+from comune import (CONFIG_FILE, IMAGES_DIR, get_current_wallpaper, set_wallpaper,
+                    update_windows_accent, load_stats, is_excluded, write_info)
 
 import requests
 from PIL import Image, ImageFilter, ImageEnhance
 
 # --- COSTANTI & CONFIGURAZIONE ---
-CONFIG_FILE = Path(__file__).parent / "config.json"
 MAX_RETRIES = 3
 TIMEOUT = 10
 START_DATE = datetime(1995, 6, 16)
-STATS_FILE = Path(__file__).parent / "statistiche.json"
 UNSPLASH_KEY_PLACEHOLDER = "your_unsplash_key_here"
+# Le immagini con il lato lungo sotto questa soglia si vedrebbero sgranate a tutto schermo
+MIN_LATO_LUNGO = 1280
+# Sfondo preparato in anticipo dal processo --prefetch, pronto per il prossimo cambio
+PREFETCH_DIR = IMAGES_DIR / "prossimo"
+
+# Una sola sessione: riusa le connessioni HTTPS invece di rifare ogni volta l'handshake
+SESSION = requests.Session()
 
 def show_popup(title, message, style=0x40):
     """
@@ -60,12 +51,12 @@ def load_config():
             "astronaut", "hubble", "james webb", "supernova", "black hole", "solar eclipse", "aurora borealis"
         ]
     }
-    
+
     if not CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump(default_config, f, indent=4)
-            
+
             # Popup con scelta Sì/No (0x04 = MB_YESNO)
             response = show_popup(
                 "Configurazione Creata",
@@ -88,7 +79,7 @@ def load_config():
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             config = json.load(f)
-            
+
         migrated = False
         if "unsplash_categories" not in config:
             config["unsplash_categories"] = default_config["unsplash_categories"]
@@ -96,7 +87,7 @@ def load_config():
         if "nasa_categories" not in config:
             config["nasa_categories"] = default_config["nasa_categories"]
             migrated = True
-            
+
         if migrated:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=4)
@@ -119,138 +110,83 @@ def random_date(start_date, end_date):
     random_days = random.randint(0, delta)
     return (start_date + timedelta(days=random_days)).strftime('%Y-%m-%d')
 
-SPI_GETDESKWALLPAPER = 0x0073
-
-def get_current_wallpaper():
-    # Fonte primaria: l'API di sistema. Su alcune installazioni Windows il valore
-    # nel registro non viene piu' aggiornato e resta fermo a uno sfondo vecchio.
+def screen_size():
+    # Risoluzione fisica. GetSystemMetrics in un processo non DPI-aware restituisce
+    # quella scalata (es. 1536x864 invece di 1920x1080 con il ridimensionamento al 125%).
+    user32 = ctypes.windll.user32
     try:
-        buf = ctypes.create_unicode_buffer(520)
-        if ctypes.windll.user32.SystemParametersInfoW(SPI_GETDESKWALLPAPER, 520, buf, 0) and buf.value:
-            path = Path(buf.value)
-            if path.exists():
-                return path
+        hdc = user32.GetDC(0)
+        try:
+            w = ctypes.windll.gdi32.GetDeviceCaps(hdc, 118)  # DESKTOPHORZRES
+            h = ctypes.windll.gdi32.GetDeviceCaps(hdc, 117)  # DESKTOPVERTRES
+        finally:
+            user32.ReleaseDC(0, hdc)
+        if w > 0 and h > 0:
+            return w, h
     except:
         pass
+    return user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+
+def fetch_image(url, screen):
+    # Scarica in memoria e restituisce l'immagine RGB, oppure None se non e' valida o e' troppo piccola
     try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", 0, winreg.KEY_READ) as key:
-            wallpaper_path = winreg.QueryValueEx(key, "Wallpaper")[0]
-            return Path(wallpaper_path) if wallpaper_path else None
+        res = SESSION.get(url, timeout=20)
+        res.raise_for_status()
+        img = Image.open(io.BytesIO(res.content))
+        if max(img.size) < MIN_LATO_LUNGO:
+            return None
+        # Solo per i JPEG: decodifica direttamente a 1/2, 1/4 o 1/8, senza scendere sotto lo schermo
+        img.draft("RGB", screen)
+        return img.convert("RGB")
     except:
         return None
 
-def smart_resize_wallpaper(image_path):
+def smart_resize_wallpaper(img, screen):
+    # Restituisce l'immagine adattata allo schermo, oppure None in caso di errore
     try:
-        user32 = ctypes.windll.user32
-        screen_w = user32.GetSystemMetrics(0)
-        screen_h = user32.GetSystemMetrics(1)
-        target_ratio = screen_w / screen_h
-        
-        with Image.open(image_path) as img:
-            img = img.convert("RGB")
-            orig_w, orig_h = img.size
-            img_ratio = orig_w / orig_h
-            
-            if abs(img_ratio - target_ratio) < 0.05:
-                return
+        screen_w, screen_h = screen
+        orig_w, orig_h = img.size
 
-            base_width = max(screen_w, orig_w)
-            base_height = int(base_width / target_ratio)
-            canvas = Image.new('RGB', (base_width, base_height))
+        # Proporzioni gia' giuste: niente sfocatura, basta non tenerla piu' grande dello schermo
+        if abs(orig_w / orig_h - screen_w / screen_h) < 0.05:
+            scale = max(screen_w / orig_w, screen_h / orig_h)
+            if scale >= 1:
+                return img
+            return img.resize((round(orig_w * scale), round(orig_h * scale)), Image.Resampling.LANCZOS)
 
-            # Estraiamo direttamente il riquadro centrale proporzionale allo schermo
-            scale = max(base_width / orig_w, base_height / orig_h)
-            crop_w, crop_h = int(base_width / scale), int(base_height / scale)
-            left = (orig_w - crop_w) // 2
-            top = (orig_h - crop_h) // 2
-            bg_layer = img.crop((left, top, left + crop_w, top + crop_h))
-            
-            # Riduciamo drasticamente la risoluzione per velocizzare il GaussianBlur
-            tiny_w, tiny_h = max(1, base_width // 10), max(1, base_height // 10)
-            bg_layer = bg_layer.resize((tiny_w, tiny_h), Image.Resampling.BILINEAR)
-            bg_layer = bg_layer.filter(ImageFilter.GaussianBlur(radius=5))
-            
-            # Riportiamo a grandezza schermo
-            bg_layer = bg_layer.resize((base_width, base_height), Image.Resampling.LANCZOS)
-            bg_layer = ImageEnhance.Brightness(bg_layer).enhance(0.6)
-            
-            scale_fit = min(base_width / orig_w, base_height / orig_h)
-            fg_w, fg_h = int(orig_w * scale_fit), int(orig_h * scale_fit)
-            fg_layer = img.resize((fg_w, fg_h), Image.Resampling.LANCZOS)
-            
-            pos_x = (base_width - fg_w) // 2
-            pos_y = (base_height - fg_h) // 2
-            
-            canvas.paste(bg_layer, (0, 0))
-            canvas.paste(fg_layer, (pos_x, pos_y))
-            canvas.save(image_path, quality=95)
-    except Exception as e:
-        print(f"[ERRORE] Resize: {e}")
+        canvas = Image.new('RGB', (screen_w, screen_h))
 
-def _accent_shade(rgb, factor):
-    # factor > 0 schiarisce verso il bianco, factor < 0 scurisce verso il nero
-    target = 255 if factor > 0 else 0
-    return tuple(int(c + (target - c) * abs(factor)) for c in rgb)
+        # Estraiamo direttamente il riquadro centrale proporzionale allo schermo
+        scale = max(screen_w / orig_w, screen_h / orig_h)
+        crop_w, crop_h = int(screen_w / scale), int(screen_h / scale)
+        left = (orig_w - crop_w) // 2
+        top = (orig_h - crop_h) // 2
+        bg_layer = img.crop((left, top, left + crop_w, top + crop_h))
 
-def update_windows_accent(image_path):
-    try:
-        with Image.open(image_path) as img:
-            img.thumbnail((100, 100))
-            img = img.convert("RGB")
-            colors = img.getcolors(10000)
-            if not colors: return False
-            
-            colors.sort(key=lambda x: x[0], reverse=True)
-            r, g, b = colors[0][1]
+        # Riduciamo drasticamente la risoluzione per velocizzare il GaussianBlur
+        tiny_w, tiny_h = max(1, screen_w // 10), max(1, screen_h // 10)
+        bg_layer = bg_layer.resize((tiny_w, tiny_h), Image.Resampling.BILINEAR)
+        bg_layer = bg_layer.filter(ImageFilter.GaussianBlur(radius=5))
 
-        if (r + g + b) < 80:
-            r, g, b = 40, 40, 40
+        # Riportiamo a grandezza schermo
+        bg_layer = bg_layer.resize((screen_w, screen_h), Image.Resampling.LANCZOS)
+        bg_layer = ImageEnhance.Brightness(bg_layer).enhance(0.6)
 
-        base = (r, g, b)
-        # Ordine della AccentPalette: tre tonalita' chiare, la base, tre scure e una extra
-        shades = [_accent_shade(base, f) for f in (0.75, 0.5, 0.25, 0, -0.2, -0.4, -0.6, -0.4)]
-        palette = bytes(v for sr, sg, sb in shades for v in (sr, sg, sb, 0))
-        abgr = lambda c: 0xFF000000 | (c[2] << 16) | (c[1] << 8) | c[0]
-        argb = 0xC4000000 | (r << 16) | (g << 8) | b
+        scale_fit = min(screen_w / orig_w, screen_h / orig_h)
+        fg_w, fg_h = int(orig_w * scale_fit), int(orig_h * scale_fit)
+        fg_layer = img.resize((fg_w, fg_h), Image.Resampling.LANCZOS)
 
-        # Windows usa la AccentPalette, non DWM\AccentColor. Con la scelta automatica attiva
-        # la ricalcola lui dallo sfondo e su quelli molto scuri ripiega sul blu predefinito.
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop") as key:
-            winreg.SetValueEx(key, "AutoColorization", 0, winreg.REG_DWORD, 0)
-
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent") as key:
-            winreg.SetValueEx(key, "AccentPalette", 0, winreg.REG_BINARY, palette)
-            winreg.SetValueEx(key, "AccentColorMenu", 0, winreg.REG_DWORD, abgr(base))
-            winreg.SetValueEx(key, "StartColorMenu", 0, winreg.REG_DWORD, abgr(shades[4]))
-
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\DWM") as key:
-            winreg.SetValueEx(key, "AccentColor", 0, winreg.REG_DWORD, abgr(base))
-            winreg.SetValueEx(key, "ColorizationColor", 0, winreg.REG_DWORD, argb)
-            winreg.SetValueEx(key, "ColorizationAfterglow", 0, winreg.REG_DWORD, argb)
-            winreg.SetValueEx(key, "ColorPrevalence", 0, winreg.REG_DWORD, 1)
-
-        # Avvisa la shell del cambio colore (WM_SETTINGCHANGE "ImmersiveColorSet")
-        ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001A, 0, "ImmersiveColorSet", 0x0002, 5000, None)
-        return True
+        canvas.paste(bg_layer, (0, 0))
+        canvas.paste(fg_layer, ((screen_w - fg_w) // 2, (screen_h - fg_h) // 2))
+        return canvas
     except:
-        return False
+        return None
 
 # --- API FUNCTIONS ---
 
 def get_valid_categories(source_list):
-    excluded = set()
-    if STATS_FILE.exists():
-        try:
-            with open(STATS_FILE, "r", encoding="utf-8") as f:
-                stats = json.load(f)
-                for cat, counts in stats.items():
-                    p = counts.get("positivi", 0)
-                    s = counts.get("scarti", 0)
-                    tot = p + s
-                    if tot > 15 and (s / tot) > 0.8:
-                        excluded.add(cat)
-        except: pass
-    return [c for c in source_list if c not in excluded]
+    stats = load_stats()
+    return [c for c in source_list if not is_excluded(stats.get(c, {}))]
 
 def _strip_tags(fragment):
     text = re.sub(r"<[^>]+>", "", fragment)
@@ -262,7 +198,7 @@ def get_apod_data(date=None):
     url = "https://science.nasa.gov/wp-json/wp/v2/apod-basic"
     url += f"/{datetime.strptime(date, '%Y-%m-%d'):%y%m%d}" if date else "?per_page=1"
     try:
-        res = requests.get(url, timeout=TIMEOUT)
+        res = SESSION.get(url, timeout=TIMEOUT)
         res.raise_for_status()
         data = res.json()
         if isinstance(data, list): data = data[0]
@@ -289,7 +225,7 @@ def get_unsplash_image():
     try:
         url = f"https://api.unsplash.com/photos/random?query={theme}&orientation=landscape"
         headers = {"Authorization": f"Client-ID {UNSPLASH_API_KEY}"}
-        res = requests.get(url, headers=headers, timeout=TIMEOUT)
+        res = SESSION.get(url, headers=headers, timeout=TIMEOUT)
         res.raise_for_status()
         data = res.json()
 
@@ -301,8 +237,10 @@ def get_unsplash_image():
         full_desc = f"Photo by {data.get('user', {}).get('name', 'Unknown')}.\n{raw_desc}"
         created_date = data.get("created_at", datetime.now().strftime('%Y-%m-%d'))[:10]
 
+        # Unsplash ridimensiona lato server: chiediamo direttamente la risoluzione dello schermo
+        w, h = screen_size()
         return {
-            "url": data["urls"]["raw"] + "&w=2560&h=1440&fit=max&q=85",
+            "url": data["urls"]["raw"] + f"&w={w}&h={h}&fit=max&q=85",
             "title": raw_title.capitalize(),
             "description": full_desc,
             "date": created_date,
@@ -317,45 +255,45 @@ def get_nasa_image_library():
     query = random.choice(valid_queries)
     try:
         base_url = f"https://images-api.nasa.gov/search?q={query}&media_type=image&year_start=2010"
-        res = requests.get(base_url, timeout=TIMEOUT)
+        res = SESSION.get(base_url, timeout=TIMEOUT)
         res.raise_for_status()
         data = res.json().get("collection", {})
         total_hits = data.get("metadata", {}).get("total_hits", 0)
         items = data.get("items", [])
-        
+
         # Se ci sono più di 100 risultati, peschiamo da una pagina casuale (max 10 pagine per mantenere pertinenza)
         if total_hits > 100:
             max_pages = min(10, (total_hits // 100) + 1)
             random_page = random.randint(1, max_pages)
             if random_page > 1:
                 try:
-                    res2 = requests.get(f"{base_url}&page={random_page}", timeout=TIMEOUT)
+                    res2 = SESSION.get(f"{base_url}&page={random_page}", timeout=TIMEOUT)
                     if res2.status_code == 200:
                         new_items = res2.json().get("collection", {}).get("items", [])
                         if new_items: items = new_items
                 except: pass
-                
+
         if not items: return None
-        
+
         item = random.choice(items)
-        
-        asset_res = requests.get(item["href"], timeout=TIMEOUT)
+
+        asset_res = SESSION.get(item["href"], timeout=TIMEOUT)
         asset_res.raise_for_status()
         asset_data = asset_res.json()
-        
+
         best_image = None
         image_urls = [url for url in asset_data if url.lower().endswith(('.jpg', '.jpeg', '.png'))]
-        
+
         for priority in ['~orig', '~large', '~medium']:
             for url in image_urls:
                 if priority in url.lower():
                     best_image = url
                     break
             if best_image: break
-            
+
         if not best_image and image_urls:
             best_image = image_urls[0]
-            
+
         if not best_image: return None
 
         meta = item["data"][0]
@@ -368,30 +306,96 @@ def get_nasa_image_library():
 
 # --- MAIN LOOP ---
 
-def download_image(url, save_path):
-    try:
-        res = requests.get(url, stream=True, timeout=20)
-        res.raise_for_status()
-        with open(save_path, "wb") as f:
-            for chunk in res.iter_content(8192): f.write(chunk)
-        with Image.open(save_path) as img: img.verify()
-        return True
-    except:
-        if save_path.exists(): save_path.unlink()
-        return False
+def find_image(screen):
+    # Prova le fonti in ordine casuale; un download fallito o un'immagine troppo piccola
+    # contano come tentativo fallito. Restituisce (metadati, immagine adattata) o (None, None).
+    apis = [get_apod_data, get_unsplash_image, get_nasa_image_library]
+    random.shuffle(apis)
 
-def set_wallpaper(path):
+    for api in apis:
+        for i in range(MAX_RETRIES):
+            try:
+                if api == get_apod_data:
+                    date = random_date(START_DATE, datetime.now() - timedelta(days=1)) if i > 0 else None
+                    data = api(date)
+                else:
+                    data = api()
+                if not data: continue
+
+                img = fetch_image(data['url'], screen)
+                wallpaper = smart_resize_wallpaper(img, screen) if img else None
+                if wallpaper: return data, wallpaper
+            except: pass
+    return None, None
+
+def prepare_image(folder):
+    # Cerca, scarica e adatta un'immagine, poi la salva in folder insieme al .txt.
+    # Il .jpg viene scritto per ultimo e con un rename: se esiste, la coppia e' completa.
+    data, wallpaper = find_image(screen_size())
+    if not data: return None
+
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    src = data['source'].lower().replace(' ', '_')
+    img_path = folder / f"wallpaper_{src}_{ts}.jpg"
+    txt_path = img_path.with_suffix('.txt')
+    tmp_path = img_path.with_suffix('.tmp')
+
+    try: write_info(txt_path, data)
+    except: pass
     try:
-        ctypes.windll.user32.SystemParametersInfoW(20, 0, str(path), 3)
-        return True
-    except: return False
+        wallpaper.save(tmp_path, "JPEG", quality=95)
+        os.replace(tmp_path, img_path)
+        return img_path
+    except:
+        for p in (tmp_path, txt_path):
+            try: p.unlink()
+            except: pass
+        return None
+
+def _mtime(path):
+    try: return path.stat().st_mtime
+    except: return 0
+
+def take_prefetched():
+    # Sposta nello storico lo sfondo preparato in anticipo, se c'e'
+    for jpg in sorted(PREFETCH_DIR.glob("wallpaper_*.jpg"), key=_mtime):
+        dest = IMAGES_DIR / jpg.name
+        try:
+            os.replace(jpg, dest)
+        except OSError:
+            continue  # preso nel frattempo da un altro processo
+        try: os.replace(jpg.with_suffix('.txt'), dest.with_suffix('.txt'))
+        except OSError: pass
+        # Lo storico e' ordinato per data di modifica: conta il momento in cui diventa sfondo
+        for p in (dest, dest.with_suffix('.txt')):
+            try: os.utime(p)
+            except OSError: pass
+        return dest
+    return None
+
+def start_prefetch():
+    try:
+        subprocess.Popen([sys.executable, os.path.abspath(__file__), "--prefetch"],
+                         cwd=str(IMAGES_DIR.parent), creationflags=subprocess.CREATE_NO_WINDOW)
+    except: pass
+
+def prefetch():
+    # Elimina gli avanzi di prefetch interrotti (file temporanei, .txt senza immagine)
+    for f in PREFETCH_DIR.iterdir():
+        orphan = f.suffix == '.tmp' or (f.suffix == '.txt' and not f.with_suffix('.jpg').exists())
+        if orphan and time.time() - _mtime(f) > 3600:
+            try: f.unlink()
+            except: pass
+
+    if any(PREFETCH_DIR.glob("wallpaper_*.jpg")): return
+    prepare_image(PREFETCH_DIR)
 
 def cleanup(folder, current, new_img, new_txt):
     keep = {new_img, new_txt}
     if current and current.parent == folder:
         keep.add(current)
         keep.add(current.with_suffix('.txt'))
-    
+
     files = sorted(folder.glob("wallpaper_*"), key=lambda x: x.stat().st_mtime, reverse=True)
     for f in files:
         if f not in keep and len(keep) < 12:
@@ -401,52 +405,21 @@ def cleanup(folder, current, new_img, new_txt):
             except: pass
 
 def main():
-    folder = Path(__file__).parent / "apod_images"
-    folder.mkdir(exist_ok=True)
-    current_wp = get_current_wallpaper()
-    
-    apis = [get_apod_data, get_unsplash_image, get_nasa_image_library]
-    random.shuffle(apis)
-    
-    img_data = None
-    for api in apis:
-        for i in range(MAX_RETRIES):
-            try:
-                if api == get_apod_data:
-                    date = random_date(START_DATE, datetime.now() - timedelta(days=1)) if i > 0 else None
-                    res = api(date)
-                else:
-                    res = api()
-                
-                if res:
-                    img_data = res
-                    break
-            except: pass
-        if img_data: break
-    
-    if not img_data: return
+    PREFETCH_DIR.mkdir(parents=True, exist_ok=True)
 
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    src = img_data['source'].lower().replace(' ', '_')
-    img_path = folder / f"wallpaper_{src}_{ts}.jpg"
-    txt_path = folder / f"wallpaper_{src}_{ts}.txt"
-    
-    if download_image(img_data['url'], img_path):
-        smart_resize_wallpaper(img_path)
-        
-        if set_wallpaper(img_path):
-            update_windows_accent(img_path)
-            
-            try:
-                desc = img_data.get('description', '').replace('\n', ' ').replace('\r', '')
-                txt_content = f"Title: {img_data['title']}\nDate: {img_data['date']}\nSource: {img_data['source']}\n"
-                if 'category' in img_data:
-                    txt_content += f"Category/Theme: {img_data['category']}\n"
-                txt_content += f"\n{desc}"
-                txt_path.write_text(txt_content, encoding='utf-8')
-            except: pass
-            
-            cleanup(folder, current_wp, img_path, txt_path)
+    if "--prefetch" in sys.argv:
+        prefetch()
+        return
+
+    current_wp = get_current_wallpaper()
+    img_path = take_prefetched() or prepare_image(IMAGES_DIR)
+    # Il prossimo sfondo si prepara in un processo separato, cosi' chi aspetta questo non attende
+    start_prefetch()
+    if not img_path: return
+
+    if set_wallpaper(img_path):
+        update_windows_accent(img_path)
+        cleanup(IMAGES_DIR, current_wp, img_path, img_path.with_suffix('.txt'))
 
 if __name__ == "__main__":
     main()
