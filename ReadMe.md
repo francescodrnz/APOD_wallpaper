@@ -7,6 +7,8 @@ Automated wallpaper switcher for Windows 10/11. Fetches high-res imagery from **
 * **DWM Color Sync:** Extracts the dominant color from the wallpaper and applies it to the Windows interface (Dark Mode safe).
 * **Multi-Source:** Cycles through NASA APOD, NASA Library, and Unsplash (Nature/Space).
 * **Auto-Config:** Automatically handles Python dependencies and configuration files.
+* **Instant Change:** After each change, the next wallpaper is downloaded and prepared in the background (`apod_images/prossimo/`), so the next change is almost instant.
+* **No Blurry Images:** Images smaller than 1280 px on the long side are skipped.
 
 ## Windows Requirements
 For the features to work correctly, set these Windows settings:
