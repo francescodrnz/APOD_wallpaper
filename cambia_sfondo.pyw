@@ -4,6 +4,7 @@ import sys
 import time
 import tkinter as tk
 from tkinter import ttk
+from tkinter import font as tkfont
 
 from comune import (IS_WINDOWS, BG_PROCESS, BASE_DIR, CONFIG_FILE, STATS_FILE,
                     get_current_wallpaper, set_wallpaper, update_windows_accent, load_stats,
@@ -54,10 +55,14 @@ def main():
     screen_height = root.winfo_screenheight()
     x = int((screen_width / 2) - (window_width / 2))
     y = int((screen_height / 2) - (window_height / 2))
-    root.geometry(f'{window_width}x{window_height}+{x}+{y}')
+    if IS_WINDOWS:
+        root.geometry(f'{window_width}x{window_height}+{x}+{y}')
     root.attributes("-topmost", True)
     root.resizable(False, False)
     root.title("Valutazione Sfondo")
+    if not IS_WINDOWS:
+        # Su Linux il font e' piu' alto e con l'altezza predefinita le righe delle tabelle tagliavano le lettere
+        ttk.Style(root).configure("Treeview", rowheight=tkfont.nametofont("TkDefaultFont").metrics("linespace") + 4)
 
     lbl_title = tk.Label(root, text="", font=("Segoe UI", 10, "bold"), pady=10, wraplength=320)
     lbl_title.pack()
@@ -306,6 +311,11 @@ def main():
         btn_save = tk.Button(manage_win, text="Salva e Chiudi", command=save_and_close, bg="#e5ffe5", width=20)
         btn_save.pack(pady=10)
 
+        if not IS_WINDOWS:
+            # Con il font di Linux la misura fissa tagliava "Salva e Chiudi": allarga se serve
+            manage_win.update_idletasks()
+            manage_win.geometry(f"{max(600, manage_win.winfo_reqwidth())}x{max(450, manage_win.winfo_reqheight())}")
+
     btn_dislike.config(command=lambda: action("dislike"))
     btn_like.config(command=lambda: action("like"))
     btn_change.config(command=lambda: action("change"))
@@ -315,6 +325,13 @@ def main():
     btn_next.config(command=lambda: cycle_wallpaper(1))
 
     refresh_ui()
+
+    if not IS_WINDOWS:
+        # Su Linux Segoe UI manca e il font sostitutivo e' piu' largo: la misura fissa tagliava
+        # i pulsanti, quindi la finestra prende quella richiesta dai widget e si centra
+        root.update_idletasks()
+        w, h = root.winfo_reqwidth(), root.winfo_reqheight()
+        root.geometry(f'+{(screen_width - w) // 2}+{(screen_height - h) // 2}')
 
     root.mainloop()
 
