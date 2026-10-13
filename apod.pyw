@@ -3,7 +3,6 @@ import os
 import io
 import ctypes
 import random
-import json
 import re
 import html
 import sys
@@ -12,8 +11,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 # comune installa requests e pillow se mancano, quindi va importato prima di loro
-from comune import (IS_WINDOWS, BG_PROCESS, CONFIG_FILE, IMAGES_DIR, get_current_wallpaper,
-                    set_wallpaper, update_windows_accent, load_stats, is_excluded, write_info)
+from comune import (IS_WINDOWS, BG_PROCESS, IMAGES_DIR, get_current_wallpaper, set_wallpaper,
+                    update_windows_accent, load_stats, is_excluded, write_info, load_config, unsplash_key)
 
 import requests
 from PIL import Image, ImageFilter, ImageEnhance
@@ -22,7 +21,6 @@ from PIL import Image, ImageFilter, ImageEnhance
 MAX_RETRIES = 3
 TIMEOUT = 10
 START_DATE = datetime(1995, 6, 16)
-UNSPLASH_KEY_PLACEHOLDER = "your_unsplash_key_here"
 # Le immagini con il lato lungo sotto questa soglia si vedrebbero sgranate a tutto schermo
 MIN_LATO_LUNGO = 1280
 # Sfondo preparato in anticipo dal processo --prefetch, pronto per il prossimo cambio
@@ -31,91 +29,8 @@ PREFETCH_DIR = IMAGES_DIR / "prossimo"
 # Una sola sessione: riusa le connessioni HTTPS invece di rifare ogni volta l'handshake
 SESSION = requests.Session()
 
-def show_popup(title, message, style=0x40):
-    """
-    Mostra un popup nativo e ritorna l'ID del tasto premuto.
-    style: combina icona e tasti (es. 0x04=YesNo, 0x40=Info)
-    Return: 6 (Yes), 7 (No), 1 (OK)
-    """
-    if not IS_WINDOWS:
-        # Su Linux usa zenity con gli stessi codici di ritorno; se manca la risposta vale "No"
-        kind = "--question" if style & 0x04 else "--error" if style & 0x10 else "--info"
-        try:
-            res = subprocess.run(["zenity", kind, "--no-markup", "--width=400",
-                                  f"--title={title}", f"--text={message}"])
-            if res.returncode == 0:
-                return 6 if kind == "--question" else 1
-        except: pass
-        return 7
-    return ctypes.windll.user32.MessageBoxW(0, message, title, style | 0x1000)
-
-def load_config():
-    default_config = {
-        "UNSPLASH_API_KEY": UNSPLASH_KEY_PLACEHOLDER,
-        "unsplash_categories": [
-            "nature", "landscape", "space", "mountain", "ocean", "sky", "forest", "desert", "aurora", "milkyway",
-            "astrophotography", "stars", "night sky", "cosmos", "observatory", "telescope",
-            "volcano", "canyon", "glacier", "waterfall", "sunset", "abstract", "cityscape", "minimalism"
-        ],
-        "nasa_categories": [
-            "galaxy", "nebula", "planet", "earth from space", "space station", "mars", "moon", "jupiter", "saturn",
-            "astronaut", "hubble", "james webb", "supernova", "black hole", "solar eclipse", "aurora borealis"
-        ]
-    }
-
-    if not CONFIG_FILE.exists():
-        try:
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(default_config, f, indent=4)
-
-            # Popup con scelta Sì/No (0x04 = MB_YESNO)
-            response = show_popup(
-                "Configurazione Creata",
-                "Il file config.json è stato creato.\n\n"
-                "Le fonti NASA funzionano senza chiavi. Per aggiungere anche le immagini Unsplash "
-                "serve una chiave gratuita (opzionale).\n\n"
-                "Vuoi aprire config.json ora per inserirla?",
-                0x04 | 0x40
-            )
-
-            # Se l'utente preme Sì (ID 6), apre il file e si ferma; altrimenti prosegue con le sole fonti NASA
-            if response == 6:
-                if IS_WINDOWS:
-                    os.startfile(CONFIG_FILE)
-                else:
-                    subprocess.Popen(["xdg-open", str(CONFIG_FILE)], **BG_PROCESS)
-                sys.exit(0)
-            return default_config
-        except Exception as e:
-            show_popup("Errore Critico", f"Impossibile creare config.json: {e}", 0x10)
-            return default_config
-
-    try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            config = json.load(f)
-
-        migrated = False
-        if "unsplash_categories" not in config:
-            config["unsplash_categories"] = default_config["unsplash_categories"]
-            migrated = True
-        if "nasa_categories" not in config:
-            config["nasa_categories"] = default_config["nasa_categories"]
-            migrated = True
-
-        if migrated:
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(config, f, indent=4)
-
-        return config
-    except Exception as e:
-        show_popup("Errore Config", f"File config.json corrotto: {e}", 0x10)
-        return default_config
-
 config = load_config()
-UNSPLASH_API_KEY = config.get("UNSPLASH_API_KEY", "").strip()
-# Chiave assente o ancora segnaposto: Unsplash viene saltato e restano le fonti NASA
-if UNSPLASH_API_KEY == UNSPLASH_KEY_PLACEHOLDER or "INSERISCI" in UNSPLASH_API_KEY:
-    UNSPLASH_API_KEY = ""
+UNSPLASH_API_KEY = unsplash_key(config)
 
 # --- CORE FUNCTIONS ---
 

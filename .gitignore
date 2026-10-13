@@ -4,3 +4,4 @@ apod_images/
 __pycache__/
 statistiche.json
 statistiche_scarti.json
+versione.json
