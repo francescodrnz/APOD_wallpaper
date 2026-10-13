@@ -5,11 +5,22 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
-from comune import (BG_PROCESS, BASE_DIR, CONFIG_FILE, STATS_FILE, get_current_wallpaper,
-                    set_wallpaper, update_windows_accent, load_stats, is_excluded, read_info, mark_rated,
-                    list_history, current_index)
+from comune import (IS_WINDOWS, BG_PROCESS, BASE_DIR, CONFIG_FILE, STATS_FILE,
+                    get_current_wallpaper, set_wallpaper, update_windows_accent, load_stats,
+                    is_excluded, read_info, mark_rated, list_history, current_index)
 
 APOD_SCRIPT = BASE_DIR / "apod.pyw"
+
+def make_modal(win):
+    if IS_WINDOWS:
+        win.grab_set()
+        return
+    # Su Linux la finestra diventa visibile solo quando il window manager la mostra:
+    # grab_set prima di allora fallisce e interromperebbe la costruzione della finestra
+    try:
+        win.wait_visibility()
+        win.grab_set()
+    except tk.TclError: pass
 
 def get_current_wallpaper_info():
     wp_path = get_current_wallpaper()
@@ -163,7 +174,7 @@ def main():
             info_win = tk.Toplevel(root)
             info_win.title("Informazioni Sfondo")
             info_win.geometry("500x400")
-            info_win.grab_set()
+            make_modal(info_win)
             
             btn_close = tk.Button(info_win, text="Chiudi", command=info_win.destroy, width=15)
             btn_close.pack(side=tk.BOTTOM, pady=10)
@@ -216,7 +227,7 @@ def main():
         manage_win = tk.Toplevel(root)
         manage_win.title("Gestione & Statistiche")
         manage_win.geometry("600x450")
-        manage_win.grab_set()
+        make_modal(manage_win)
 
         lbl_info = tk.Label(manage_win, text="Gestisci le categorie e visualizza i voti (🔴 = Esclusa in automatico)", pady=10)
         lbl_info.pack()
