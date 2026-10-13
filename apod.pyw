@@ -9,6 +9,7 @@ import html
 import sys
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 # comune installa requests e pillow se mancano, quindi va importato prima di loro
 from comune import (IS_WINDOWS, BG_PROCESS, CONFIG_FILE, IMAGES_DIR, get_current_wallpaper,
@@ -125,13 +126,24 @@ def random_date(start_date, end_date):
 
 def screen_size():
     if not IS_WINDOWS:
-        # Linux: risoluzione del monitor primario secondo xrandr, altrimenti del primo collegato
+        # Linux. Su X11 xrandr da' la risoluzione in uso del monitor primario (o del primo collegato).
+        # Su Wayland xrandr puo' rispondere con una misura scalata, quindi si salta.
+        if os.environ.get("XDG_SESSION_TYPE") != "wayland":
+            try:
+                out = subprocess.run(["xrandr", "--current"], capture_output=True, text=True, timeout=10).stdout
+                found = (re.search(r" connected primary (\d+)x(\d+)\+", out)
+                         or re.search(r" connected (\d+)x(\d+)\+", out))
+                if found:
+                    return int(found.group(1)), int(found.group(2))
+            except: pass
+        # Altrimenti la risoluzione nativa del primo schermo collegato, letta dal kernel
+        # (vale su qualsiasi distribuzione e anche su Wayland; la prima modalita' e' quella preferita)
         try:
-            out = subprocess.run(["xrandr", "--current"], capture_output=True, text=True, timeout=10).stdout
-            found = (re.search(r" connected primary (\d+)x(\d+)\+", out)
-                     or re.search(r" connected (\d+)x(\d+)\+", out))
-            if found:
-                return int(found.group(1)), int(found.group(2))
+            for status in sorted(Path("/sys/class/drm").glob("card*-*/status")):
+                if status.read_text().strip() == "connected":
+                    found = re.match(r"(\d+)x(\d+)", (status.parent / "modes").read_text())
+                    if found:
+                        return int(found.group(1)), int(found.group(2))
         except: pass
         return 1920, 1080
     # Risoluzione fisica. GetSystemMetrics in un processo non DPI-aware restituisce

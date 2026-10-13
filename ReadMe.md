@@ -1,6 +1,6 @@
 # Space & Nature Wallpaper Manager
 
-Automated wallpaper switcher for Windows 10/11 and Linux (Cinnamon, GNOME, MATE). The same scripts detect the system on their own. Fetches high-res imagery from **NASA** and **Unsplash**, adapts them to your screen using **Ambient Blur** (no black bars), and dynamically syncs the **Windows UI accent color** (Windows only).
+Automated wallpaper switcher for Windows 10/11 and Linux (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, Budgie). The same scripts detect the system on their own. Fetches high-res imagery from **NASA** and **Unsplash**, adapts them to your screen using **Ambient Blur** (no black bars), and dynamically syncs the **Windows UI accent color** (Windows only).
 
 ## Key Features
 * **Smart Resize:** Automatically applies a cinematic "Ambient Blur" to fill the screen, preserving the original aspect ratio without cropping.
@@ -59,13 +59,17 @@ To run silently at login:
 * **Missing Config Popup:** Check that `config.json` is not excluded by your antivirus or file permissions.
 
 ## Linux
-The same files work on Linux and detect the system automatically. Supported desktops: **Cinnamon** (Linux Mint), **GNOME** (Ubuntu, Fedora...), **Budgie** and **MATE**. KDE and XFCE are not supported yet.
+The same files work on Linux and detect the system automatically, on any distribution. What matters is the desktop environment. Supported: **GNOME** (Ubuntu, Fedora, Debian, Pop!_OS...), **KDE Plasma** (Kubuntu, Fedora KDE, openSUSE...), **XFCE** (Xubuntu, Linux Mint XFCE...), **Cinnamon** (Linux Mint), **MATE** and **Budgie**. On other environments (i3, Sway, Hyprland, LXQt...) the image is downloaded but the wallpaper is not changed.
+
+KDE Plasma and XFCE support has not been tested on a real system yet: if it does not work for you, please open an issue.
 
 Differences from Windows:
 * The accent color is not changed (on Linux it depends on the desktop theme).
 * Dependencies are not installed automatically, because the system Python does not allow `pip install`. Install them once:
   ```sh
-  sudo apt install python3-requests python3-pil python3-tk zenity
+  sudo apt install python3-requests python3-pil python3-tk zenity          # Debian, Ubuntu, Mint
+  sudo dnf install python3-requests python3-pillow python3-tkinter zenity  # Fedora
+  sudo pacman -S python-requests python-pillow tk zenity                   # Arch, Manjaro
   ```
   (`python3-tk` is only needed for `cambia_sfondo.pyw`, `zenity` for the first-run popup.)
 * Run the scripts with `python3` (double-clicking a `.pyw` file opens it in a text editor):
@@ -79,11 +83,10 @@ Differences from Windows:
 [Desktop Entry]
 Type=Application
 Name=APOD Wallpaper
-Exec=python3 /home/USER/APOD_wallpaper/apod.pyw
+Exec=sh -c "sleep 15 && exec python3 /home/USER/APOD_wallpaper/apod.pyw"
 X-GNOME-Autostart-enabled=true
-X-GNOME-Autostart-Delay=15
 ```
-The delay gives the network time to come up after login.
+The 15-second wait gives the network time to come up after login. This works the same way on every desktop listed above.
 
 **Menu launcher for the rating window:** create `~/.local/share/applications/cambia_sfondo.desktop`:
 ```ini
@@ -94,7 +97,7 @@ Exec=python3 /home/USER/APOD_wallpaper/cambia_sfondo.pyw
 Icon=preferences-desktop-wallpaper
 Terminal=false
 ```
-For the best result set the background style to **Zoom** (Cinnamon/GNOME) or **Fill**.
+The image is already sized to your screen. If you see bars or a cropped image, set the background style to **Zoom** (GNOME, Cinnamon, XFCE, MATE) or **Scaled and Cropped** (KDE).
 
 ## License
 MIT License. Created by **Francesco Doronzo**.

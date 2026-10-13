@@ -43,32 +43,117 @@ IMAGES_DIR = BASE_DIR / "apod_images"
 # --- SFONDO E COLORE D'ACCENTO ---
 SPI_GETDESKWALLPAPER = 0x0073
 
-def _gsettings_keys():
-    # Linux: chiavi gsettings dello sfondo per il desktop in uso, come (schema, chiave, tipo).
-    # Il tipo "uri" vuole un file://, "path" il percorso semplice. KDE e XFCE non sono gestiti.
-    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
-    if "cinnamon" in desktop:
-        return [("org.cinnamon.desktop.background", "picture-uri", "uri")]
-    if "mate" in desktop:
-        return [("org.mate.background", "picture-filename", "path")]
-    if any(d in desktop for d in ("gnome", "unity", "budgie")):
-        # Da GNOME 42 il tema scuro usa una chiave a parte
-        return [("org.gnome.desktop.background", "picture-uri", "uri"),
-                ("org.gnome.desktop.background", "picture-uri-dark", "uri")]
-    return []
+# --- SFONDO SU LINUX ---
+# Ogni ambiente desktop salva lo sfondo in un posto diverso:
+# - Cinnamon, GNOME (anche Budgie e Unity) e MATE: gsettings
+# - XFCE: xfconf-query, con una proprieta' last-image per ogni monitor e area di lavoro
+# - KDE Plasma: plasma-apply-wallpaperimage, o uno script inviato via D-Bus sulle versioni vecchie
+GSETTINGS_KEYS = {
+    # (schema, chiave, tipo): il tipo "uri" vuole un file://, "path" il percorso semplice
+    "cinnamon": [("org.cinnamon.desktop.background", "picture-uri", "uri")],
+    "mate": [("org.mate.background", "picture-filename", "path")],
+    # Da GNOME 42 il tema scuro usa una chiave a parte
+    "gnome": [("org.gnome.desktop.background", "picture-uri", "uri"),
+              ("org.gnome.desktop.background", "picture-uri-dark", "uri")],
+}
+KDE_APPLETSRC = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "plasma-org.kde.plasma.desktop-appletsrc"
+# Plasma non salva subito la sua configurazione su disco: qui si annota l'ultimo sfondo impostato
+KDE_LAST = IMAGES_DIR / "sfondo_impostato_kde"
+KDE_SCRIPT = ('var d = desktops(); for (var i = 0; i < d.length; i++) {'
+              ' d[i].wallpaperPlugin = "org.kde.image";'
+              ' d[i].currentConfigGroup = ["Wallpaper", "org.kde.image", "General"];'
+              ' d[i].writeConfig("Image", %s); }')
 
-def _gsettings(*args):
-    return subprocess.run(["gsettings", *args], capture_output=True, text=True, timeout=10)
+def _linux_desktop():
+    desktop = (os.environ.get("XDG_CURRENT_DESKTOP") or os.environ.get("DESKTOP_SESSION") or "").lower()
+    if "cinnamon" in desktop: return "cinnamon"
+    if "mate" in desktop: return "mate"
+    if "xfce" in desktop: return "xfce"
+    if "kde" in desktop or "plasma" in desktop: return "kde"
+    if any(d in desktop for d in ("gnome", "unity", "budgie")): return "gnome"
+    return None
+
+def _run(cmd):
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+
+def _to_path(value):
+    # Accetta sia un URI file:// sia un percorso semplice
+    return Path(unquote(urlparse(value).path)) if value.startswith("file://") else Path(value)
+
+def _xfconf(*args):
+    return _run(["xfconf-query", "-c", "xfce4-desktop", *args])
+
+def _xfce_image_props():
+    return sorted(p for p in _xfconf("-l").stdout.split() if p.endswith("/last-image"))
+
+def _kde_get_wallpaper():
+    # Immagini che Plasma ha salvato per i suoi desktop
+    images, in_section = [], False
+    try:
+        for line in KDE_APPLETSRC.read_text(encoding="utf-8").splitlines():
+            if line.startswith("["):
+                in_section = line.strip().endswith("[Wallpaper][org.kde.image][General]")
+            elif in_section and line.startswith("Image="):
+                images.append(_to_path(line[len("Image="):].strip()))
+    except: pass
+    try:
+        last = Path(KDE_LAST.read_text(encoding="utf-8").strip())
+        try: newer = KDE_APPLETSRC.stat().st_mtime > KDE_LAST.stat().st_mtime
+        except OSError: newer = False
+        # L'ultimo sfondo impostato da qui vale finche' Plasma non salva una configurazione
+        # piu' recente che non lo contiene, cioe' finche' lo sfondo non viene cambiato a mano
+        if last in images or not newer:
+            return last
+    except: pass
+    return images[0] if images else None
+
+def _kde_set_wallpaper(path):
+    commands = [["plasma-apply-wallpaperimage", str(path)]]
+    script = KDE_SCRIPT % json.dumps(path.as_uri())
+    commands += [[qdbus, "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript", script]
+                 for qdbus in ("qdbus6", "qdbus-qt6", "qdbus", "qdbus-qt5")]
+    for cmd in commands:
+        try:
+            if _run(cmd).returncode == 0:
+                try: KDE_LAST.write_text(str(path), encoding="utf-8")
+                except: pass
+                return True
+        except: pass  # comando non installato, si prova il successivo
+    return False
+
+def _linux_get_wallpaper():
+    desktop = _linux_desktop()
+    if desktop == "kde":
+        return _kde_get_wallpaper()
+    if desktop == "xfce":
+        props = _xfce_image_props()
+        value = _xfconf("-p", props[0]).stdout.strip() if props else ""
+        return Path(value) if value else None
+    if desktop in GSETTINGS_KEYS:
+        schema, key, _ = GSETTINGS_KEYS[desktop][0]
+        value = _run(["gsettings", "get", schema, key]).stdout.strip().strip("'")
+        return _to_path(value) if value else None
+    return None
+
+def _linux_set_wallpaper(path):
+    desktop = _linux_desktop()
+    if desktop == "kde":
+        return _kde_set_wallpaper(path)
+    ok = False
+    if desktop == "xfce":
+        for prop in _xfce_image_props():
+            ok = _xfconf("-p", prop, "-s", str(path)).returncode == 0 or ok
+        return ok
+    for schema, key, kind in GSETTINGS_KEYS.get(desktop, []):
+        value = path.as_uri() if kind == "uri" else str(path)
+        try: ok = _run(["gsettings", "set", schema, key, value]).returncode == 0 or ok
+        except: pass
+    return ok
 
 def get_current_wallpaper():
     if not IS_WINDOWS:
-        try:
-            schema, key, kind = _gsettings_keys()[0]
-            value = _gsettings("get", schema, key).stdout.strip().strip("'")
-            if not value: return None
-            return Path(unquote(urlparse(value).path) if kind == "uri" else value)
-        except:
-            return None
+        try: return _linux_get_wallpaper()
+        except: return None
     # Fonte primaria: l'API di sistema. Su alcune installazioni Windows il valore
     # nel registro non viene piu' aggiornato e resta fermo a uno sfondo vecchio.
     try:
@@ -89,14 +174,8 @@ def get_current_wallpaper():
 def set_wallpaper(path):
     if not IS_WINDOWS:
         # absolute() e non resolve(): il percorso deve restare confrontabile con IMAGES_DIR
-        path = Path(path).absolute()
-        ok = False
-        for schema, key, kind in _gsettings_keys():
-            try:
-                value = path.as_uri() if kind == "uri" else str(path)
-                ok = _gsettings("set", schema, key, value).returncode == 0 or ok
-            except: pass
-        return ok
+        try: return _linux_set_wallpaper(Path(path).absolute())
+        except: return False
     try:
         ctypes.windll.user32.SystemParametersInfoW(20, 0, str(path), 3)
         return True

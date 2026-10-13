@@ -23,7 +23,7 @@ Cambia-sfondo in Python per Windows 10/11 e Linux. Scarica un'immagine da una fo
 2. `load_config()` crea o migra `config.json`.
 3. `main()` prende lo sfondo già pronto in `apod_images/prossimo/` (`take_prefetched`). Se non c'è, lo prepara al momento con `prepare_image`. Poi avvia `apod.pyw --prefetch` come processo separato, e infine chiama `set_wallpaper`, `update_windows_accent` e `cleanup` (tiene i 12 file `wallpaper_*` più recenti, cioè circa 6 coppie immagine/testo, oltre allo sfondo corrente).
 4. `prepare_image` → `find_image` mescola le fonti `[get_apod_data, get_unsplash_image, get_nasa_image_library]` e prova ognuna fino a `MAX_RETRIES` volte. Per APOD il primo tentativo è l'immagine di oggi, i successivi sono date casuali dal 1995. Ogni funzione sorgente restituisce un dict `{url, title, description, date, source[, category]}`, oppure `None` per far passare al tentativo successivo.
-5. `fetch_image` scarica in memoria e restituisce `None` (tentativo fallito) se il file non è un'immagine o se il lato lungo è sotto `MIN_LATO_LUNGO` (1280 px). `smart_resize_wallpaper` porta l'immagine alla risoluzione fisica dello schermo (`screen_size`: su Windows tramite `GetDeviceCaps`, perché `GetSystemMetrics` darebbe quella scalata dai DPI; su Linux tramite `xrandr`). Il `.txt` viene scritto prima del `.jpg`, che viene salvato come `.tmp` e rinominato: se il `.jpg` esiste, la coppia è completa.
+5. `fetch_image` scarica in memoria e restituisce `None` (tentativo fallito) se il file non è un'immagine o se il lato lungo è sotto `MIN_LATO_LUNGO` (1280 px). `smart_resize_wallpaper` porta l'immagine alla risoluzione fisica dello schermo (`screen_size`: su Windows tramite `GetDeviceCaps`, perché `GetSystemMetrics` darebbe quella scalata dai DPI; su Linux tramite `xrandr` o, su Wayland e senza xrandr, dai file del kernel in `/sys/class/drm`). Il `.txt` viene scritto prima del `.jpg`, che viene salvato come `.tmp` e rinominato: se il `.jpg` esiste, la coppia è completa.
 
 Prefetch: con `--prefetch` lo script prepara un'immagine in `apod_images/prossimo/` senza toccare sfondo, accento e storico, ed esce subito se ce n'è già una pronta. La sottocartella non rientra nei glob `wallpaper_*`, quindi storico e pulizia non la vedono. Quando uno sfondo preparato viene usato, `take_prefetched` lo sposta in `apod_images/` e ne aggiorna la mtime, perché lo storico è ordinato per mtime. Tutte le chiamate HTTP passano per `SESSION` (`requests.Session`), che riusa le connessioni.
 
@@ -33,14 +33,21 @@ Prefetch: con `--prefetch` lo script prepara un'immagine in `apod_images/prossim
 
 | Cosa | Windows | Linux |
 |---|---|---|
-| `get_current_wallpaper` / `set_wallpaper` | `SystemParametersInfoW` + registro | `gsettings` (`_gsettings_keys`: Cinnamon `org.cinnamon.desktop.background`, GNOME/Unity/Budgie `org.gnome.desktop.background` con anche `picture-uri-dark`, MATE `org.mate.background picture-filename`) |
+| `get_current_wallpaper` / `set_wallpaper` | `SystemParametersInfoW` + registro | dipende dal desktop (`_linux_desktop`), vedi sotto |
 | `update_windows_accent` | registro + `WM_SETTINGCHANGE` | restituisce `False`, non fa nulla |
-| `screen_size` (`apod.pyw`) | `GetDeviceCaps` | `xrandr --current`, monitor primario, ripiego 1920x1080 |
+| `screen_size` (`apod.pyw`) | `GetDeviceCaps` | su X11 `xrandr --current` (monitor primario); su Wayland o senza xrandr la prima modalità del primo schermo collegato in `/sys/class/drm/card*-*/modes`; ripiego 1920x1080 |
 | `show_popup` (`apod.pyw`) | `MessageBoxW` | `zenity`, con gli stessi codici di ritorno (6/7/1); se manca restituisce 7 = "No" |
 | apertura di `config.json` | `os.startfile` | `xdg-open` |
 | `BG_PROCESS` (opzioni di `Popen`) | `creationflags=CREATE_NO_WINDOW` | `start_new_session=True` |
 
-Su Linux, `set_wallpaper` usa `Path.absolute()` e non `resolve()`, così il percorso letto da gsettings resta confrontabile con `IMAGES_DIR` in `cleanup`. KDE e XFCE non sono gestiti: `_gsettings_keys` restituisce una lista vuota e `set_wallpaper` restituisce `False`. Sul Python di sistema di Linux `pip install` non è permesso (PEP 668), quindi `install_dependencies` fallisce in silenzio e le dipendenze vanno installate con apt (`python3-requests python3-pil python3-tk zenity`).
+Su Linux `_linux_desktop()` riconosce l'ambiente desktop da `XDG_CURRENT_DESKTOP` (o da `DESKTOP_SESSION`), e `_linux_get_wallpaper` / `_linux_set_wallpaper` scelgono il metodo:
+
+- **Cinnamon, GNOME (anche Unity e Budgie), MATE**: `gsettings`, con schema e chiavi in `GSETTINGS_KEYS`. GNOME scrive anche `picture-uri-dark`; MATE vuole un percorso semplice invece di un URI `file://`.
+- **XFCE**: `xfconf-query -c xfce4-desktop`. `set` scrive tutte le proprietà `.../last-image` esistenti (una per monitor e area di lavoro), `get` legge la prima in ordine alfabetico.
+- **KDE Plasma**: `set` usa `plasma-apply-wallpaperimage` (Plasma 5.24+); se manca, manda `KDE_SCRIPT` a `org.kde.PlasmaShell.evaluateScript` con il primo tra `qdbus6`, `qdbus-qt6`, `qdbus` e `qdbus-qt5` che risulta installato. Plasma non salva subito `plasma-org.kde.plasma.desktop-appletsrc`, quindi `set` annota il percorso in `apod_images/sfondo_impostato_kde` (il file non rientra nei glob `wallpaper_*`). `get` restituisce quel percorso, a meno che `appletsrc` non sia più recente e non lo contenga più, cioè se lo sfondo è stato cambiato a mano.
+- Altri ambienti: `get` restituisce `None`, `set` restituisce `False`.
+
+KDE e XFCE sono stati provati solo con comandi finti, non su un desktop vero. `set_wallpaper` usa `Path.absolute()` e non `resolve()`, così il percorso letto dal desktop resta confrontabile con `IMAGES_DIR` in `cleanup`. Sul Python di sistema di Linux `pip install` non è permesso (PEP 668), quindi `install_dependencies` fallisce in silenzio e le dipendenze vanno installate con il gestore di pacchetti della distribuzione (comandi nel ReadMe).
 
 ## Contratto tra i due script
 
