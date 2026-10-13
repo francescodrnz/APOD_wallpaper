@@ -81,7 +81,9 @@ Type=Application
 Name=APOD Wallpaper
 Exec=python3 /home/USER/APOD_wallpaper/apod.pyw
 X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=15
 ```
+The delay gives the network time to come up after login.
 
 **Menu launcher for the rating window:** create `~/.local/share/applications/cambia_sfondo.desktop`:
 ```ini
