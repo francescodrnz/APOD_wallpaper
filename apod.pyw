@@ -11,8 +11,8 @@ import time
 from datetime import datetime, timedelta
 
 # comune installa requests e pillow se mancano, quindi va importato prima di loro
-from comune import (CONFIG_FILE, IMAGES_DIR, get_current_wallpaper, set_wallpaper,
-                    update_windows_accent, load_stats, is_excluded, write_info)
+from comune import (IS_WINDOWS, BG_PROCESS, CONFIG_FILE, IMAGES_DIR, get_current_wallpaper,
+                    set_wallpaper, update_windows_accent, load_stats, is_excluded, write_info)
 
 import requests
 from PIL import Image, ImageFilter, ImageEnhance
@@ -36,6 +36,16 @@ def show_popup(title, message, style=0x40):
     style: combina icona e tasti (es. 0x04=YesNo, 0x40=Info)
     Return: 6 (Yes), 7 (No), 1 (OK)
     """
+    if not IS_WINDOWS:
+        # Su Linux usa zenity con gli stessi codici di ritorno; se manca la risposta vale "No"
+        kind = "--question" if style & 0x04 else "--error" if style & 0x10 else "--info"
+        try:
+            res = subprocess.run(["zenity", kind, "--no-markup", "--width=400",
+                                  f"--title={title}", f"--text={message}"])
+            if res.returncode == 0:
+                return 6 if kind == "--question" else 1
+        except: pass
+        return 7
     return ctypes.windll.user32.MessageBoxW(0, message, title, style | 0x1000)
 
 def load_config():
@@ -69,7 +79,10 @@ def load_config():
 
             # Se l'utente preme Sì (ID 6), apre il file e si ferma; altrimenti prosegue con le sole fonti NASA
             if response == 6:
-                os.startfile(CONFIG_FILE)
+                if IS_WINDOWS:
+                    os.startfile(CONFIG_FILE)
+                else:
+                    subprocess.Popen(["xdg-open", str(CONFIG_FILE)], **BG_PROCESS)
                 sys.exit(0)
             return default_config
         except Exception as e:
@@ -111,6 +124,16 @@ def random_date(start_date, end_date):
     return (start_date + timedelta(days=random_days)).strftime('%Y-%m-%d')
 
 def screen_size():
+    if not IS_WINDOWS:
+        # Linux: risoluzione del monitor primario secondo xrandr, altrimenti del primo collegato
+        try:
+            out = subprocess.run(["xrandr", "--current"], capture_output=True, text=True, timeout=10).stdout
+            found = (re.search(r" connected primary (\d+)x(\d+)\+", out)
+                     or re.search(r" connected (\d+)x(\d+)\+", out))
+            if found:
+                return int(found.group(1)), int(found.group(2))
+        except: pass
+        return 1920, 1080
     # Risoluzione fisica. GetSystemMetrics in un processo non DPI-aware restituisce
     # quella scalata (es. 1536x864 invece di 1920x1080 con il ridimensionamento al 125%).
     user32 = ctypes.windll.user32
@@ -376,7 +399,7 @@ def take_prefetched():
 def start_prefetch():
     try:
         subprocess.Popen([sys.executable, os.path.abspath(__file__), "--prefetch"],
-                         cwd=str(IMAGES_DIR.parent), creationflags=subprocess.CREATE_NO_WINDOW)
+                         cwd=str(IMAGES_DIR.parent), **BG_PROCESS)
     except: pass
 
 def prefetch():

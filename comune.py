@@ -3,9 +3,19 @@ import subprocess
 import importlib.util
 import ctypes
 import json
+import os
 import sys
-import winreg
 from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+# Stesso codice su Windows e Linux: le parti che parlano col sistema scelgono il ramo da qui
+IS_WINDOWS = sys.platform == "win32"
+if IS_WINDOWS:
+    import winreg
+
+# Opzioni per i processi lanciati in background: su Windows niente finestra di console,
+# su Linux il figlio non viene chiuso insieme al processo che l'ha avviato
+BG_PROCESS = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {"start_new_session": True}
 
 # --- GESTIONE DIPENDENZE ---
 def install_dependencies():
@@ -33,7 +43,32 @@ IMAGES_DIR = BASE_DIR / "apod_images"
 # --- SFONDO E COLORE D'ACCENTO ---
 SPI_GETDESKWALLPAPER = 0x0073
 
+def _gsettings_keys():
+    # Linux: chiavi gsettings dello sfondo per il desktop in uso, come (schema, chiave, tipo).
+    # Il tipo "uri" vuole un file://, "path" il percorso semplice. KDE e XFCE non sono gestiti.
+    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+    if "cinnamon" in desktop:
+        return [("org.cinnamon.desktop.background", "picture-uri", "uri")]
+    if "mate" in desktop:
+        return [("org.mate.background", "picture-filename", "path")]
+    if any(d in desktop for d in ("gnome", "unity", "budgie")):
+        # Da GNOME 42 il tema scuro usa una chiave a parte
+        return [("org.gnome.desktop.background", "picture-uri", "uri"),
+                ("org.gnome.desktop.background", "picture-uri-dark", "uri")]
+    return []
+
+def _gsettings(*args):
+    return subprocess.run(["gsettings", *args], capture_output=True, text=True, timeout=10)
+
 def get_current_wallpaper():
+    if not IS_WINDOWS:
+        try:
+            schema, key, kind = _gsettings_keys()[0]
+            value = _gsettings("get", schema, key).stdout.strip().strip("'")
+            if not value: return None
+            return Path(unquote(urlparse(value).path) if kind == "uri" else value)
+        except:
+            return None
     # Fonte primaria: l'API di sistema. Su alcune installazioni Windows il valore
     # nel registro non viene piu' aggiornato e resta fermo a uno sfondo vecchio.
     try:
@@ -52,6 +87,16 @@ def get_current_wallpaper():
         return None
 
 def set_wallpaper(path):
+    if not IS_WINDOWS:
+        # absolute() e non resolve(): il percorso deve restare confrontabile con IMAGES_DIR
+        path = Path(path).absolute()
+        ok = False
+        for schema, key, kind in _gsettings_keys():
+            try:
+                value = path.as_uri() if kind == "uri" else str(path)
+                ok = _gsettings("set", schema, key, value).returncode == 0 or ok
+            except: pass
+        return ok
     try:
         ctypes.windll.user32.SystemParametersInfoW(20, 0, str(path), 3)
         return True
@@ -63,6 +108,8 @@ def _accent_shade(rgb, factor):
     return tuple(int(c + (target - c) * abs(factor)) for c in rgb)
 
 def update_windows_accent(image_path):
+    # Su Linux non c'e' un'API comune per il colore d'accento: dipende dal tema del desktop
+    if not IS_WINDOWS: return False
     try:
         with Image.open(image_path) as img:
             img.thumbnail((100, 100))

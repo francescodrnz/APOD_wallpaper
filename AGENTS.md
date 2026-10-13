@@ -4,7 +4,7 @@ Note per agenti di coding che lavorano su questo repository. Per l'uso lato uten
 
 ## Cos'è
 
-Cambia-sfondo per Windows 10/11 in Python. Scarica un'immagine da una fonte casuale (NASA APOD, NASA Image Library, Unsplash), la adatta allo schermo con un "ambient blur", la imposta come sfondo e sincronizza il colore d'accento di Windows. Solo Windows: usa `ctypes.windll`, `winreg` e `SystemParametersInfoW`.
+Cambia-sfondo in Python per Windows 10/11 e Linux. Scarica un'immagine da una fonte casuale (NASA APOD, NASA Image Library, Unsplash), la adatta allo schermo con un "ambient blur", la imposta come sfondo e, solo su Windows, sincronizza il colore d'accento. Gli stessi file girano su entrambi i sistemi e scelgono da soli il ramo giusto (vedi "Windows e Linux").
 
 ## File
 
@@ -12,7 +12,7 @@ Cambia-sfondo per Windows 10/11 in Python. Scarica un'immagine da una fonte casu
 |---|---|
 | `apod.pyw` | Script headless: sceglie una fonte, scarica, ridimensiona, imposta lo sfondo, scrive i metadati, pulisce la cache e prepara in anticipo il prossimo sfondo. Pensato per l'avvio automatico al login. |
 | `cambia_sfondo.pyw` | Finestra Tkinter: mostra info sullo sfondo attuale, like/dislike, scorrimento avanti/indietro tra gli sfondi in cache, gestione categorie e statistiche. Per cambiare sfondo lancia `apod.pyw` come sottoprocesso. |
-| `comune.py` | Codice condiviso dai due script: installazione delle dipendenze, percorsi, lettura/impostazione dello sfondo, colore d'accento, statistiche e regola di esclusione, lettura/scrittura del `.txt`, storico. Le funzioni usate da entrambi vanno qui, non duplicate. |
+| `comune.py` | Codice condiviso dai due script: rilevamento della piattaforma (`IS_WINDOWS`, `BG_PROCESS`), installazione delle dipendenze, percorsi, lettura/impostazione dello sfondo, colore d'accento, statistiche e regola di esclusione, lettura/scrittura del `.txt`, storico. Le funzioni usate da entrambi vanno qui, non duplicate. |
 | `config.json` | Chiave Unsplash (opzionale) e liste di categorie. **Ignorato da git, contiene segreti: non committarlo e non riportarne il contenuto.** Viene generato al primo avvio di `apod.pyw`. |
 | `statistiche.json` | Voti per categoria (`positivi` / `scarti`). Ignorato da git. |
 | `apod_images/` | Cache locale di immagini e metadati. Ignorata da git. |
@@ -23,9 +23,24 @@ Cambia-sfondo per Windows 10/11 in Python. Scarica un'immagine da una fonte casu
 2. `load_config()` crea o migra `config.json`.
 3. `main()` prende lo sfondo già pronto in `apod_images/prossimo/` (`take_prefetched`). Se non c'è, lo prepara al momento con `prepare_image`. Poi avvia `apod.pyw --prefetch` come processo separato, e infine chiama `set_wallpaper`, `update_windows_accent` e `cleanup` (tiene i 12 file `wallpaper_*` più recenti, cioè circa 6 coppie immagine/testo, oltre allo sfondo corrente).
 4. `prepare_image` → `find_image` mescola le fonti `[get_apod_data, get_unsplash_image, get_nasa_image_library]` e prova ognuna fino a `MAX_RETRIES` volte. Per APOD il primo tentativo è l'immagine di oggi, i successivi sono date casuali dal 1995. Ogni funzione sorgente restituisce un dict `{url, title, description, date, source[, category]}`, oppure `None` per far passare al tentativo successivo.
-5. `fetch_image` scarica in memoria e restituisce `None` (tentativo fallito) se il file non è un'immagine o se il lato lungo è sotto `MIN_LATO_LUNGO` (1280 px). `smart_resize_wallpaper` porta l'immagine alla risoluzione fisica dello schermo (`screen_size`, tramite `GetDeviceCaps`: `GetSystemMetrics` darebbe quella scalata dai DPI). Il `.txt` viene scritto prima del `.jpg`, che viene salvato come `.tmp` e rinominato: se il `.jpg` esiste, la coppia è completa.
+5. `fetch_image` scarica in memoria e restituisce `None` (tentativo fallito) se il file non è un'immagine o se il lato lungo è sotto `MIN_LATO_LUNGO` (1280 px). `smart_resize_wallpaper` porta l'immagine alla risoluzione fisica dello schermo (`screen_size`: su Windows tramite `GetDeviceCaps`, perché `GetSystemMetrics` darebbe quella scalata dai DPI; su Linux tramite `xrandr`). Il `.txt` viene scritto prima del `.jpg`, che viene salvato come `.tmp` e rinominato: se il `.jpg` esiste, la coppia è completa.
 
 Prefetch: con `--prefetch` lo script prepara un'immagine in `apod_images/prossimo/` senza toccare sfondo, accento e storico, ed esce subito se ce n'è già una pronta. La sottocartella non rientra nei glob `wallpaper_*`, quindi storico e pulizia non la vedono. Quando uno sfondo preparato viene usato, `take_prefetched` lo sposta in `apod_images/` e ne aggiorna la mtime, perché lo storico è ordinato per mtime. Tutte le chiamate HTTP passano per `SESSION` (`requests.Session`), che riusa le connessioni.
+
+## Windows e Linux
+
+`comune.py` definisce `IS_WINDOWS = sys.platform == "win32"`. Le funzioni che parlano col sistema hanno un ramo `if not IS_WINDOWS:` all'inizio e, sotto, il codice Windows originale. Quando modifichi una di queste funzioni, aggiorna entrambi i rami.
+
+| Cosa | Windows | Linux |
+|---|---|---|
+| `get_current_wallpaper` / `set_wallpaper` | `SystemParametersInfoW` + registro | `gsettings` (`_gsettings_keys`: Cinnamon `org.cinnamon.desktop.background`, GNOME/Unity/Budgie `org.gnome.desktop.background` con anche `picture-uri-dark`, MATE `org.mate.background picture-filename`) |
+| `update_windows_accent` | registro + `WM_SETTINGCHANGE` | restituisce `False`, non fa nulla |
+| `screen_size` (`apod.pyw`) | `GetDeviceCaps` | `xrandr --current`, monitor primario, ripiego 1920x1080 |
+| `show_popup` (`apod.pyw`) | `MessageBoxW` | `zenity`, con gli stessi codici di ritorno (6/7/1); se manca restituisce 7 = "No" |
+| apertura di `config.json` | `os.startfile` | `xdg-open` |
+| `BG_PROCESS` (opzioni di `Popen`) | `creationflags=CREATE_NO_WINDOW` | `start_new_session=True` |
+
+Su Linux, `set_wallpaper` usa `Path.absolute()` e non `resolve()`, così il percorso letto da gsettings resta confrontabile con `IMAGES_DIR` in `cleanup`. KDE e XFCE non sono gestiti: `_gsettings_keys` restituisce una lista vuota e `set_wallpaper` restituisce `False`. Sul Python di sistema di Linux `pip install` non è permesso (PEP 668), quindi `install_dependencies` fallisce in silenzio e le dipendenze vanno installate con apt (`python3-requests python3-pil python3-tk zenity`).
 
 ## Contratto tra i due script
 
@@ -79,6 +94,8 @@ print(m.get_apod_data("2010-03-15"))  # data specifica
 img = m.fetch_image(m.get_apod_data()["url"], m.screen_size())
 print(m.smart_resize_wallpaper(img, m.screen_size()).size)
 ```
+
+Su Linux lancia gli script con `python3`. Per provare `show_popup` e il primo avvio senza aprire finestre, metti in testa al `PATH` uno script `zenity` finto che esce con 0 ("Sì") o 1 ("No").
 
 Il prefetch non cambia lo sfondo: per provarlo, copia `comune.py`, `apod.pyw` e `config.json` in una cartella temporanea e lancia lì `python apod.pyw --prefetch`.
 

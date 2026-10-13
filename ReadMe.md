@@ -1,6 +1,6 @@
 # Space & Nature Wallpaper Manager
 
-Automated wallpaper switcher for Windows 10/11. Fetches high-res imagery from **NASA** and **Unsplash**, adapts them to your screen using **Ambient Blur** (no black bars), and dynamically syncs the **Windows UI accent color**.
+Automated wallpaper switcher for Windows 10/11 and Linux (Cinnamon, GNOME, MATE). The same scripts detect the system on their own. Fetches high-res imagery from **NASA** and **Unsplash**, adapts them to your screen using **Ambient Blur** (no black bars), and dynamically syncs the **Windows UI accent color** (Windows only).
 
 ## Key Features
 * **Smart Resize:** Automatically applies a cinematic "Ambient Blur" to fill the screen, preserving the original aspect ratio without cropping.
@@ -57,6 +57,42 @@ To run silently at login:
 * **Windows Color is Blue/Default:** The script writes the full accent palette and turns off Windows' "Automatic" accent option, which falls back to blue on very dark images. If the image is near-black (e.g., deep space), the script uses a dark grey. Some apps only pick up the new color after a restart or a sign-out.
 * **Black Bars/Cropped Image:** Ensure Windows Background fit is set to **Fill**. The script handles the aspect ratio internally.
 * **Missing Config Popup:** Check that `config.json` is not excluded by your antivirus or file permissions.
+
+## Linux
+The same files work on Linux and detect the system automatically. Supported desktops: **Cinnamon** (Linux Mint), **GNOME** (Ubuntu, Fedora...), **Budgie** and **MATE**. KDE and XFCE are not supported yet.
+
+Differences from Windows:
+* The accent color is not changed (on Linux it depends on the desktop theme).
+* Dependencies are not installed automatically, because the system Python does not allow `pip install`. Install them once:
+  ```sh
+  sudo apt install python3-requests python3-pil python3-tk zenity
+  ```
+  (`python3-tk` is only needed for `cambia_sfondo.pyw`, `zenity` for the first-run popup.)
+* Run the scripts with `python3` (double-clicking a `.pyw` file opens it in a text editor):
+  ```sh
+  python3 apod.pyw            # change wallpaper
+  python3 cambia_sfondo.pyw   # rating window
+  ```
+
+**Auto-start at login:** create `~/.config/autostart/apod.desktop` (replace the path with your clone):
+```ini
+[Desktop Entry]
+Type=Application
+Name=APOD Wallpaper
+Exec=python3 /home/USER/APOD_wallpaper/apod.pyw
+X-GNOME-Autostart-enabled=true
+```
+
+**Menu launcher for the rating window:** create `~/.local/share/applications/cambia_sfondo.desktop`:
+```ini
+[Desktop Entry]
+Type=Application
+Name=Cambia Sfondo
+Exec=python3 /home/USER/APOD_wallpaper/cambia_sfondo.pyw
+Icon=preferences-desktop-wallpaper
+Terminal=false
+```
+For the best result set the background style to **Zoom** (Cinnamon/GNOME) or **Fill**.
 
 ## License
 MIT License. Created by **Francesco Doronzo**.

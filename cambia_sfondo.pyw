@@ -5,8 +5,8 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
-from comune import (BASE_DIR, CONFIG_FILE, STATS_FILE, get_current_wallpaper, set_wallpaper,
-                    update_windows_accent, load_stats, is_excluded, read_info, mark_rated,
+from comune import (BG_PROCESS, BASE_DIR, CONFIG_FILE, STATS_FILE, get_current_wallpaper,
+                    set_wallpaper, update_windows_accent, load_stats, is_excluded, read_info, mark_rated,
                     list_history, current_index)
 
 APOD_SCRIPT = BASE_DIR / "apod.pyw"
@@ -139,7 +139,7 @@ def main():
         if APOD_SCRIPT.exists():
             disable_buttons("⏳ Sfondo in download... (0s)")
             previous_wp = get_current_wallpaper()
-            proc = subprocess.Popen([sys.executable, str(APOD_SCRIPT)], cwd=str(BASE_DIR), creationflags=subprocess.CREATE_NO_WINDOW)
+            proc = subprocess.Popen([sys.executable, str(APOD_SCRIPT)], cwd=str(BASE_DIR), **BG_PROCESS)
             root.after(250, check_process, proc, time.time(), previous_wp)
 
     def cycle_wallpaper(direction):
