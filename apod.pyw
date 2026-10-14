@@ -12,7 +12,7 @@ from pathlib import Path
 
 # comune installa requests e pillow se mancano, quindi va importato prima di loro
 from comune import (IS_WINDOWS, BG_PROCESS, IMAGES_DIR, get_current_wallpaper, set_wallpaper,
-                    update_windows_accent, load_stats, is_excluded, write_info, load_config, unsplash_key)
+                    update_windows_accent, load_stats, is_excluded, write_info, read_info, load_config, unsplash_key)
 
 import requests
 from PIL import Image, ImageFilter, ImageEnhance
@@ -256,11 +256,18 @@ def get_nasa_image_library():
 
 # --- MAIN LOOP ---
 
+def recent_images():
+    # (titolo, data) degli sfondi in cache e di quello preparato in anticipo
+    files = list(IMAGES_DIR.glob("wallpaper_*.txt")) + list(PREFETCH_DIR.glob("wallpaper_*.txt"))
+    return {(info["title"], info["date"]) for info in map(read_info, files)}
+
 def find_image(screen):
-    # Prova le fonti in ordine casuale; un download fallito o un'immagine troppo piccola
+    # Prova le fonti in ordine casuale; un download fallito, un'immagine troppo piccola o gia' in cache
     # contano come tentativo fallito. Restituisce (metadati, immagine adattata) o (None, None).
     apis = [get_apod_data, get_unsplash_image, get_nasa_image_library]
     random.shuffle(apis)
+    # Senza questo controllo l'APOD di oggi tornerebbe a ogni cambio, anche nel prefetch subito dopo lo sfondo
+    seen = recent_images()
 
     for api in apis:
         for i in range(MAX_RETRIES):
@@ -271,6 +278,7 @@ def find_image(screen):
                 else:
                     data = api()
                 if not data: continue
+                if (str(data['title']).strip(), str(data['date']).strip()) in seen: continue
 
                 img = fetch_image(data['url'], screen)
                 wallpaper = smart_resize_wallpaper(img, screen) if img else None

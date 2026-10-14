@@ -367,7 +367,7 @@ def write_info(txt_path, img_data):
     txt_path.write_text(txt_content, encoding='utf-8')
 
 def read_info(txt_path):
-    info = {"title": "Sfondo Sconosciuto", "source": "Sconosciuto", "category": None, "content": "Nessuna informazione disponibile per questo sfondo.", "cat_or_source": None, "rated": False}
+    info = {"title": "Sfondo Sconosciuto", "date": None, "source": "Sconosciuto", "category": None, "content": "Nessuna informazione disponibile per questo sfondo.", "cat_or_source": None, "rated": False}
     if txt_path and txt_path.exists():
         try:
             content = txt_path.read_text(encoding="utf-8")
@@ -379,6 +379,8 @@ def read_info(txt_path):
                     info["source"] = line.replace("Source:", "").strip()
                 elif line.startswith("Title:"):
                     info["title"] = line.replace("Title:", "").strip()
+                elif line.startswith("Date:"):
+                    info["date"] = line.replace("Date:", "").strip()
                 elif line.startswith("Valutato:"):
                     info["rated"] = line.replace("Valutato:", "").strip().lower() == "si"
 
