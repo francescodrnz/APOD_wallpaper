@@ -1,0 +1,56 @@
+# Verifica del ramo `installazione-semplice` su Windows
+
+Verifica del 14/10/2026, partita dal commit `761a675`. Il file sta in `docs/` perché gli installer copiano solo i file della radice: così non finisce nelle installazioni.
+
+## Ambiente
+
+- Windows 11 Home 26H2, build 26300.9550 (nel registro `ProductName` dice ancora "Windows 10 Home"), schermo 1920x1080 al 125% (120 DPI).
+- Windows PowerShell 5.1.26100.9549.
+- Python: `py -0p` → 3.14 per utente (`%LOCALAPPDATA%\Programs\Python\Python314`, predefinito) e 3.11 (`C:\Python311`). `where python` trova anche lo stub di `WindowsApps`.
+- winget v1.29.380.
+- Prima dei test c'era un'installazione a mano dal clone in `Documents\APOD_wallpaper`: `apod.pyw - collegamento.lnk` in Esecuzione automatica e `Cambia sfondo.lnk` sul Desktop. `%LOCALAPPDATA%\APOD_wallpaper` non esisteva.
+
+## Risultati
+
+| Passo | Esito | Dettagli o output rilevante |
+|---|---|---|
+| 0. Backup | OK | `%TEMP%\apod_backup`: 4 `.reg`, sfondo attuale e `TranscodedWallpaper`, i 2 `.lnk` del vecchio setup, versioni, valori iniziali (`WallpaperStyle=6`, nessun `Run\APOD_wallpaper`). |
+| 1. Installer con `irm \| iex` | OK | Trovato `Python314\python.exe` tramite `py -3`. pip: "Requirement already satisfied". In `%LOCALAPPDATA%\APOD_wallpaper` ci sono `*.py`, `*.pyw`, `icona.*`, `installa.*`, `ReadMe.md`, `AGENTS.md`, `versione.json`. |
+| 1. `versione.json` | OK | Primi byte `7B 0D 0A` (senza BOM), JSON valido, `commit` = `761a67546d7e…` = HEAD del ramo, `ramo` e `data` corretti. |
+| 1. Dipendenze | OK | `import requests, PIL, tkinter` → requests 2.32.5, Pillow 12.3.0, Tk 8.6. |
+| 1. Errore con `irm \| iex` | OK | Con un ramo inesistente (`-NoExit`, finestra visibile) l'errore 404 di `Invoke-RestMethod` viene mostrato e la finestra resta aperta con il prompt. Il messaggio è quello grezzo di PowerShell. |
+| 1. Finestra "Installazione APOD Wallpaper" | OK | 651x643 px, niente tagliato (screenshot e conferma dell'utente). Tutte le caselle selezionate, pulsante "Installa". |
+| 1. Dopo "Installa" | OK | Nessuna console. Si apre la finestra principale (`--primo-sfondo`) e scarica uno sfondo APOD; il prefetch prepara il successivo in `apod_images\prossimo`. |
+| 1. Avvio automatico | OK | `Run\APOD_wallpaper` = `"…\Python314\pythonw.exe" "…\APOD_wallpaper\apod.pyw"`. Il vecchio `apod.pyw - collegamento.lnk` in Esecuzione automatica è stato rimosso. |
+| 1. Collegamenti | OK | Menu Start e Desktop: `TargetPath` = `pythonw.exe`, `Arguments` = `"…\cambia_sfondo.pyw"`, `WorkingDirectory` = cartella di installazione, `IconLocation` = `…\icona.ico,0`. L'utente vede l'icona del programma. Il vecchio `Cambia sfondo.lnk` sul Desktop (verso il clone) ha lo stesso nome a meno delle maiuscole ed è stato sovrascritto. |
+| 1. Riempi e colore d'accento | OK | `WallpaperStyle=10`, `TileWallpaper=0`. `AccentPalette` cambiata (da `C5C9C900…` a `C9C9C900…`). |
+| 2. `set_autostart` / `autostart_enabled` | OK | False → `reg query` senza valore; True → valore corretto. |
+| 2. `set_shortcut` / `shortcut_path` | OK | Per `menu` e `desktop`, off/on → il file sparisce e ricompare (`Test-Path` ed `exists()` coerenti). |
+| 2. `pythonw_path` / `is_install_dir` | OK | `…\Python314\pythonw.exe`, `True`. |
+| 2. `colore_accento=false` | OK | `update_windows_accent` → `False`, palette invariata. La controprova con l'accento attivo non ha cambiato la palette perché tutte e due le immagini erano scure: il codice ripiega su (40,40,40). Atteso, non è un bug. |
+| 2. `screen_size()` | OK | (1920, 1080), uguale alla risoluzione fisica (`Win32_VideoController`) nonostante il 125%. |
+| 3. Impostazioni: salvataggio | OK | Con tutto spento: niente `Run`, niente `.lnk`, `colore_accento=false`. Riaprendo, le caselle risultano tolte. Con tutto acceso: tutto ricreato, icona visibile. |
+| 3. Cartelle, link Unsplash, Controlla aggiornamenti | OK | Confermati dall'utente; risponde "Il programma è aggiornato". |
+| 4. `check_update()` con `734e5be` | OK | Restituisce le 3 novità e `commit` = `761a675…`. |
+| 4. Banda "Aggiorna" | OK | Riaprendo dal menu Start compare la banda gialla, la finestra si allunga senza tagliare niente (screenshot). |
+| 4. Pulsante "Aggiorna" | OK | Elenco novità, aggiornamento e riapertura della finestra senza banda. `versione.json` torna a `761a675…` senza BOM; tutti gli altri file (config e immagini) hanno lo stesso hash di prima. `statistiche.json` non esisteva (nessun voto), quindi è intatto per costruzione: non è nell'archivio. |
+| 4. Reinstallazione | OK, con nota | Finestra "APOD Wallpaper aggiornato" con le caselle come le aveva lasciate l'utente. Config intatto. Con "Salva" si apre una seconda finestra principale accanto a quella già aperta (bug aperto 2). |
+| 5. Disinstalla | OK, con nota | Cartella, `Run`, i due `.lnk` e i processi `pythonw` spariti. L'utente però non ha visto il messaggio finale (bug aperto 1). Facendo prove si è trovato e corretto un altro bug sulla cancellazione della cartella (bug corretto 2). |
+| 6. Python assente (lettura) | OK, con note | `winget show -e --id Python.Python.3.13 --scope user` trova l'installer per utente di python.org (3.13.15). Dopo l'installazione `Find-Python` lo troverebbe in ogni caso con il glob `%LOCALAPPDATA%\Programs\Python\Python3*\python.exe`, anche se il `PATH` della sessione non vedesse ancora `py`. Note nei bug aperti 4 e 5. |
+| 7. Ripristino | OK | `reg import` dei 4 file; un nuovo `reg export` è identico al backup (`WallpaperStyle=6`, niente `Run\APOD_wallpaper`, stessa `AccentPalette`). Sfondo originale reimpostato con `SystemParametersInfoW(20, 0, path, 3)`, poi `WM_SETTINGCHANGE "ImmersiveColorSet"`. Rimessi `apod.pyw - collegamento.lnk` in Esecuzione automatica e `Cambia sfondo.lnk` sul Desktop. `%LOCALAPPDATA%\APOD_wallpaper` assente come prima. |
+
+## Bug corretti
+
+1. **`16c8acc` – fix: installer, il controllo di Tk non interrompe piu' lo script su PowerShell 5 e mostra il suo messaggio.** In `installa.ps1`, `& $python -c "import tkinter" 2>$null` gira con `$ErrorActionPreference = 'Stop'`. Su Windows PowerShell 5.1 il traceback su stderr diventa un `NativeCommandError` che interrompe lo script, quindi l'avviso su Tk mancante non compariva mai (riprodotto con un modulo inesistente). Il controllo ora gira con `Continue`.
+2. **`942c983` – fix: disinstallazione, la cartella viene cancellata dopo l'uscita della finestra anche se il messaggio finale resta aperto piu' di due secondi.** `uninstall()` lanciava `cmd /c ping -n 3 … & rmdir`, cioè cancellava dopo circa 2 secondi fissi. Se il messaggio "è stato disinstallato" era ancora aperto, il processo teneva la cartella come directory corrente: `rmdir` cancellava i file ma lasciava la cartella vuota (riprodotto: messaggio aperto 3,2 s → cartella rimasta). Ora un PowerShell staccato fa `Wait-Process` sul PID del chiamante e poi `Remove-Item`, con qualche tentativo. Provato con il processo vivo per 6 s: la cartella resta finché il processo è vivo e sparisce subito dopo. Aggiornata anche la riga in `AGENTS.md`.
+
+## Bug lasciati aperti, con proposta
+
+1. **Messaggio finale della disinstallazione non visto.** Nel test vero l'utente non ha visto "APOD Wallpaper è stato disinstallato.", eppure la cartella è sparita: il processo è quindi uscito entro circa 2 s dal lancio di `rmdir`, cioè il messaggio non è rimasto aperto. Rifacendo la stessa sequenza (una riproduzione delle sole finestre e poi il codice vero da una copia in un `LOCALAPPDATA` temporaneo, con log) il messaggio compare sempre e resta aperto finché non si preme OK. La differenza col test vero è che lì venivano davvero cancellati i `.lnk` del menu Start e del Desktop: Explorer, aggiornando il Desktop, potrebbe aver portato in primo piano un'altra finestra. Non riprodotto. Proposta: se ricapita, registrare messagebox ed eccezioni come in `wrap_ui.pyw` usato nella prova (Tk su `pythonw` perde le eccezioni dei callback); in alternativa chiudere prima la finestra Impostazioni e mostrare il messaggio con `parent=root` e `-topmost`.
+2. **Doppia finestra principale dopo la reinstallazione.** Se la finestra principale è già aperta, "Salva" nella finestra "APOD Wallpaper aggiornato" ne apre un'altra (`restart_ui`). Proposta: istanza singola in `main()` con un mutex con nome (`CreateMutexW` + `ERROR_ALREADY_EXISTS` → porta in primo piano la finestra esistente ed esce), oppure riaprire la finestra principale solo alla prima installazione.
+3. **Prima installazione annullata, poi trattata come aggiornamento.** `install()` calcola `first_install = not CONFIG_FILE.exists()` e poi chiama `load_config()`, che crea subito `config.json` (lo fa anche `build_settings`). Se l'utente preme "Annulla" alla prima installazione, al rilancio dell'installer la finestra dice "Aggiornamento completato…", le caselle sono tutte spente e alla fine non arriva il primo sfondo. Lo deduco dal codice, non l'ho provato. Proposta: in `build_settings` usare `read_config()` (che non crea il file) e togliere `load_config()` da `install()`. Il file verrebbe creato da `save()`.
+4. **`Find-Python` sceglie la prima versione che risponde, anche senza Tk.** Se `py -3` punta a un Python senza Tk, l'installer si ferma con l'avviso invece di provare gli altri candidati (es. il Python per utente). Proposta: in `Find-Python` provare `-c "import tkinter, sys; print(sys.executable)"`, con lo stesso accorgimento su `$ErrorActionPreference` del bug corretto 1.
+5. **Ordine del glob `Python3*`.** `Sort-Object FullName -Descending` mette `Python39` prima di `Python313` (confronto tra stringhe). Conta solo se `py` e `python` mancano e ci sono più versioni. Proposta: ordinare per il numero dopo `Python3` (`[int]($_.Directory.Name -replace '^Python3', '')`).
+6. **`check_update()` e i rami molto indietro.** L'API `compare` restituisce al massimo 250 commit: oltre, `commits[-1]` non è la punta del ramo e l'aggiornamento si fermerebbe a un commit intermedio (il resto arriverebbe al controllo successivo). Proposta: prendere lo sha da `GET /repos/…/commits/<ramo>` (come fa l'installer) e usare `compare` solo per l'elenco delle novità.
+7. **Messaggi minori.** La finestra di reinstallazione dice "Aggiornamento completato" anche quando la versione non è cambiata. L'errore dell'installer per un ramo inesistente o per la rete assente è l'eccezione grezza di PowerShell. Proposta: confrontare il commit precedente con quello nuovo e dire "già aggiornato"; mettere download ed estrazione in un `try/catch` con un messaggio in italiano.
+8. **Nota, non bug: vecchia installazione dal clone.** L'installer rimuove il collegamento ad `apod.pyw` in Esecuzione automatica anche se punta a un'altra cartella (voluto, per non cambiare sfondo due volte). Sovrascrive anche un `Cambia sfondo.lnk` sul Desktop fatto a mano, perché sul file system il nome è uguale a meno delle maiuscole. La disinstallazione poi lo cancella. Il ReadMe potrebbe dire che l'installer sostituisce un'installazione dal clone.
