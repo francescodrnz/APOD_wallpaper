@@ -550,9 +550,14 @@ def uninstall(delete_folder=False):
         ok = set_shortcut(where, False) and ok
     if delete_folder and is_install_dir():
         if IS_WINDOWS:
-            # Il processo che chiama tiene occupata la cartella: si cancella un paio di secondi dopo la sua uscita
-            subprocess.Popen(f'cmd /c ping -n 3 127.0.0.1 >nul & rmdir /s /q "{BASE_DIR}"',
-                             cwd=os.environ.get("TEMP") or None, **BG_PROCESS)
+            # Il processo che chiama tiene occupata la cartella finche' non esce, anche dopo minuti se il messaggio
+            # finale resta aperto: PowerShell aspetta la sua uscita e poi riprova per qualche secondo
+            env = dict(os.environ, APOD_PID=str(os.getpid()), APOD_DIR=str(BASE_DIR))
+            script = ("Wait-Process -Id $env:APOD_PID -ErrorAction SilentlyContinue; "
+                      "for ($i = 0; $i -lt 30 -and (Test-Path -LiteralPath $env:APOD_DIR); $i++) { "
+                      "Start-Sleep 1; Remove-Item -LiteralPath $env:APOD_DIR -Recurse -Force -ErrorAction SilentlyContinue }")
+            subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                             cwd=os.environ.get("TEMP") or None, env=env, **BG_PROCESS)
         else:
             shutil.rmtree(BASE_DIR, ignore_errors=True)
     return ok

@@ -44,7 +44,7 @@ Prefetch: con `--prefetch` lo script prepara un'immagine in `apod_images/prossim
 | `open_path` (cartelle) | `os.startfile` | `xdg-open` |
 | `autostart_enabled` / `set_autostart` | valore `APOD_wallpaper` in `HKCU\...\CurrentVersion\Run`; toglie anche i vecchi `.lnk` ad `apod.pyw` in Esecuzione automatica | `~/.config/autostart/apod.desktop` con `sleep 15` |
 | `shortcut_path` / `set_shortcut` (`"menu"`, `"desktop"`) | `Cambia Sfondo.lnk` creato con PowerShell + `WScript.Shell` (valori passati nelle variabili d'ambiente) | `cambia_sfondo.desktop` in `~/.local/share/applications` e nella cartella di `xdg-user-dir DESKTOP` (eseguibile e `metadata::trusted`) |
-| `uninstall` (cancellazione cartella) | `cmd /c ping ... & rmdir` staccato, dopo l'uscita del processo | `shutil.rmtree` |
+| `uninstall` (cancellazione cartella) | PowerShell staccato: `Wait-Process` sul processo che chiama (che tiene la cartella come directory corrente), poi `Remove-Item` con qualche tentativo | `shutil.rmtree` |
 | `pythonw_path` | `pythonw.exe` accanto a `python.exe` | `sys.executable` |
 | `_run` | aggiunge `CREATE_NO_WINDOW`, altrimenti da `pythonw` ogni comando aprirebbe una console | `subprocess.run` |
 | `BG_PROCESS` (opzioni di `Popen`) | `creationflags=CREATE_NO_WINDOW` | `start_new_session=True` |
