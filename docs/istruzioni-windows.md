@@ -38,3 +38,18 @@ Istruzioni per la sessione su Windows. Il primo giro è in `docs/verifica-window
 - Correggi quello che trovi: commit in italiano, Conventional Commits, una riga.
 - In `docs/verifica-windows.md` aggiorna la sezione "Seguito": aggiungi l'esito su Windows di ogni riga e una riga per il punto 6.
 - Fai commit e push sul ramo `installazione-semplice`. Poi riporta il PC allo stato di partenza.
+
+## Comunicazione con la sessione su Linux
+
+Le due sessioni non si parlano direttamente: comunicano solo con file nella cartella `docs/` del ramo, che l'utente fa leggere all'altra dopo il pull. Non chiedere all'utente di copiare e incollare messaggi.
+
+- Scrivi i finding per la sessione Linux in `docs/da-windows.md`, con una sezione per ogni giro di verifica, datata e con il commit di partenza. Ci vanno:
+  - i bug trovati e non corretti, con passi per riprodurli e una proposta;
+  - le decisioni da prendere;
+  - le cose da provare su Linux;
+  - le domande;
+  - le modifiche che hai fatto a codice condiviso (`comune.py`, `cambia_sfondo.pyw`, `apod.pyw`), anche se sono già corrette, perché toccano anche Linux.
+- I risultati della verifica restano in `docs/verifica-windows.md`. In `docs/da-windows.md` metti solo quello che richiede un'azione o una risposta.
+- Le risposte e le nuove istruzioni da Linux arrivano in questo file (`docs/istruzioni-windows.md`): quando l'utente ti dice di fare pull, rileggilo.
+- Fai sempre commit e push di questi file, altrimenti l'altra sessione non li vede.
+- Alla fine di' all'utente in una riga se in `docs/da-windows.md` c'è qualcosa per la sessione Linux.
