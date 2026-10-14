@@ -76,8 +76,12 @@
     Write-Host 'Installo le dipendenze (requests, Pillow)...'
     & $python -m pip install --user --disable-pip-version-check requests pillow
     if ($LASTEXITCODE -ne 0) { Write-Host 'pip non e'' riuscito: ci riprovera'' il programma al primo avvio.' -ForegroundColor Yellow }
+    # Con 'Stop' PowerShell 5 trasformerebbe il traceback su stderr in un errore che interrompe lo script
+    $ErrorActionPreference = 'Continue'
     & $python -c "import tkinter" 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $tk = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($tk -ne 0) {
         Write-Host 'Questo Python non ha Tk: reinstallalo da python.org lasciando selezionato "tcl/tk and IDLE".' -ForegroundColor Yellow
         return
     }
