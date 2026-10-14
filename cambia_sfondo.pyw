@@ -10,7 +10,8 @@ from tkinter import ttk, messagebox
 from tkinter import font as tkfont
 
 from comune import (IS_WINDOWS, BG_PROCESS, BASE_DIR, CONFIG_FILE, STATS_FILE, IMAGES_DIR, APOD_SCRIPT,
-                    UI_SCRIPT, ICON_PNG, UNSPLASH_KEY_PLACEHOLDER, get_current_wallpaper, set_wallpaper,
+                    UI_SCRIPT, ICON_PNG, UNSPLASH_KEY_PLACEHOLDER, DEFAULT_CONFIG, show_popup, read_config,
+                    get_current_wallpaper, set_wallpaper,
                     update_windows_accent, load_stats, is_excluded, read_info, mark_rated, list_history,
                     current_index, load_config, save_config, unsplash_key, autostart_enabled, set_autostart,
                     shortcut_exists, set_shortcut, open_path, is_install_dir, uninstall, local_version,
@@ -76,9 +77,10 @@ def version_text(version):
 
 def ask_and_update(root, parent, update, set_status):
     novita = update["novita"]
+    totale = update.get("totale", len(novita))
     elenco = "\n".join(f"• {n}" for n in novita[-15:])
-    if len(novita) > 15:
-        elenco = f"... e altre {len(novita) - 15} modifiche precedenti\n" + elenco
+    if totale > 15:
+        elenco = f"... e altre {totale - 15} modifiche precedenti\n" + elenco
     if not messagebox.askyesno("Aggiornamento disponibile", f"Novità:\n\n{elenco}\n\nVuoi aggiornare ora?", parent=parent):
         return
     set_status("⏳ Aggiornamento in corso...", "blue")
@@ -94,17 +96,16 @@ def ask_and_update(root, parent, update, set_status):
             restart_ui(root)
     run_in_background(root, lambda: apply_update(update), done)
 
-def build_settings(root, win, on_close, install_mode=False, first_install=False):
+def build_settings(root, win, on_close, intro=None, first_install=False):
     """Riempie win con le impostazioni. on_close(salvate) chiude la finestra.
-    install_mode: finestra mostrata dagli installer; first_install: prima installazione, tutto selezionato."""
-    cfg = load_config()
+    intro: testo in cima, solo nella finestra mostrata dagli installer; first_install: prima installazione, tutto selezionato."""
+    install_mode = intro is not None
+    # Senza creare config.json: se la prima installazione viene annullata, al rilancio deve risultare ancora la prima
+    cfg = {**DEFAULT_CONFIG, **read_config()}
     body = tk.Frame(win, padx=12, pady=8)
     body.pack(fill=tk.BOTH, expand=True)
 
     if install_mode:
-        intro = ("Scegli come usare APOD Wallpaper e premi Installa: il primo sfondo arriva subito dopo.\n"
-                 "Potrai cambiare tutto in seguito dal pulsante Impostazioni." if first_install else
-                 "Aggiornamento completato. Le impostazioni sono rimaste quelle di prima.")
         tk.Label(body, text=intro, font=("Segoe UI", 10), justify=tk.LEFT, wraplength=480).pack(anchor=tk.W, pady=(0, 6))
 
     def section(title):
@@ -172,7 +173,7 @@ def build_settings(root, win, on_close, install_mode=False, first_install=False)
                 set_status("⚠️ Impossibile controllare (connessione assente?)", "red")
             elif update:
                 found["update"] = update
-                set_status(f"🆕 Nuova versione disponibile ({len(update['novita'])} modifiche)", "green")
+                set_status(f"🆕 Nuova versione disponibile ({update.get('totale', len(update['novita']))} modifiche)", "green")
                 btn_update.config(state=tk.NORMAL)
             else:
                 set_status("✅ Il programma è aggiornato", "green")
@@ -211,7 +212,14 @@ def build_settings(root, win, on_close, install_mode=False, first_install=False)
         msg = "APOD Wallpaper è stato disinstallato." if ok else "Alcuni collegamenti non sono stati tolti."
         if not delete:
             msg += f"\n\nI file sono rimasti in:\n{BASE_DIR}"
-        messagebox.showinfo("Disinstalla", msg, parent=win)
+        win.destroy()
+        if IS_WINDOWS:
+            # Explorer, aggiornando il desktop senza i collegamenti, puo' passare davanti alla finestra:
+            # MessageBoxW di show_popup resta in primo piano
+            root.withdraw()
+            show_popup("Disinstalla", msg)
+        else:
+            messagebox.showinfo("Disinstalla", msg, parent=root)
         root.destroy()
 
     bottom = tk.Frame(win, padx=12, pady=8)
@@ -224,22 +232,35 @@ def build_settings(root, win, on_close, install_mode=False, first_install=False)
     win.protocol("WM_DELETE_WINDOW", lambda: on_close(False))
 
 def install():
-    # Finestra aperta dagli installer (--installa): solo le impostazioni, poi la finestra principale
+    # Finestra aperta dagli installer (--installa): solo le impostazioni, poi, alla prima installazione,
+    # la finestra principale. Gli installer passano --precedente=<commit> se c'era gia' una versione.
     first_install = not CONFIG_FILE.exists()
-    load_config()
+    previous = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--precedente=")), "")
+    unchanged = previous and previous == (local_version() or {}).get("commit")
+    if first_install:
+        title = "Installazione APOD Wallpaper"
+        intro = ("Scegli come usare APOD Wallpaper e premi Installa: il primo sfondo arriva subito dopo.\n"
+                 "Potrai cambiare tutto in seguito dal pulsante Impostazioni.")
+    elif unchanged:
+        title = "APOD Wallpaper"
+        intro = "APOD Wallpaper è già all'ultima versione. Qui sotto puoi cambiare le impostazioni."
+    else:
+        title = "APOD Wallpaper aggiornato"
+        intro = "Aggiornamento completato. Le impostazioni sono rimaste quelle di prima."
     root = tk.Tk()
     setup_window(root)
-    root.title("Installazione APOD Wallpaper" if first_install else "APOD Wallpaper aggiornato")
+    root.title(title)
     root.resizable(False, False)
 
     def close(saved):
-        if saved:
-            # Alla prima installazione la finestra principale scarica subito il primo sfondo
-            restart_ui(root, *(["--primo-sfondo"] if first_install else []))
+        if saved and first_install:
+            # La finestra principale scarica subito il primo sfondo. Dopo un aggiornamento non si apre:
+            # potrebbe essere gia' aperta e ne comparirebbe una seconda
+            restart_ui(root, "--primo-sfondo")
         else:
             root.destroy()
 
-    build_settings(root, root, close, install_mode=True, first_install=first_install)
+    build_settings(root, root, close, intro=intro, first_install=first_install)
     center(root)
     root.mainloop()
 

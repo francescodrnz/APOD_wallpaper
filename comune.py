@@ -587,21 +587,29 @@ def local_version():
 
 def check_update():
     # Confronta la versione in uso con il ramo su GitHub. Restituisce None se e' aggiornata,
-    # altrimenti {"commit", "data", "novita"}. In caso di errore (rete, limite API) solleva l'eccezione.
+    # altrimenti {"commit", "data", "novita", "totale"}. In caso di errore (rete, limite API) solleva l'eccezione.
     import requests
     version = local_version()
     if not version:
         raise RuntimeError("versione installata sconosciuta")
-    res = requests.get(f"{GITHUB_API}/compare/{version['commit']}...{version['ramo']}", timeout=5,
-                       headers={"Accept": "application/vnd.github+json"})
+    headers = {"Accept": "application/vnd.github+json"}
+    # La punta del ramo si chiede a parte: compare elenca al massimo 250 commit
+    res = requests.get(f"{GITHUB_API}/commits/{version['ramo']}", timeout=5, headers=headers)
+    res.raise_for_status()
+    tip = res.json()
+    if tip["sha"] == version["commit"]:
+        return None
+    res = requests.get(f"{GITHUB_API}/compare/{version['commit']}...{tip['sha']}", timeout=5, headers=headers)
     res.raise_for_status()
     data = res.json()
-    commits = data.get("commits") or []
-    if data.get("ahead_by", 0) <= 0 or not commits:
+    # "behind": la versione in uso e' piu' avanti del ramo (clone con commit locali)
+    if data.get("status") in ("behind", "identical"):
         return None
-    return {"commit": commits[-1]["sha"],
-            "data": commits[-1]["commit"]["committer"]["date"][:10],
-            "novita": [c["commit"]["message"].splitlines()[0] for c in commits]}
+    commits = data.get("commits") or []
+    return {"commit": tip["sha"],
+            "data": tip["commit"]["committer"]["date"][:10],
+            "novita": [c["commit"]["message"].splitlines()[0] for c in commits],
+            "totale": max(data.get("ahead_by", 0), len(commits))}
 
 def apply_update(update):
     # Porta il programma alla versione update["commit"]. Config, statistiche e immagini

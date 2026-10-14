@@ -54,3 +54,18 @@ Verifica del 14/10/2026, partita dal commit `761a675`. Il file sta in `docs/` pe
 6. **`check_update()` e i rami molto indietro.** L'API `compare` restituisce al massimo 250 commit: oltre, `commits[-1]` non è la punta del ramo e l'aggiornamento si fermerebbe a un commit intermedio (il resto arriverebbe al controllo successivo). Proposta: prendere lo sha da `GET /repos/…/commits/<ramo>` (come fa l'installer) e usare `compare` solo per l'elenco delle novità.
 7. **Messaggi minori.** La finestra di reinstallazione dice "Aggiornamento completato" anche quando la versione non è cambiata. L'errore dell'installer per un ramo inesistente o per la rete assente è l'eccezione grezza di PowerShell. Proposta: confrontare il commit precedente con quello nuovo e dire "già aggiornato"; mettere download ed estrazione in un `try/catch` con un messaggio in italiano.
 8. **Nota, non bug: vecchia installazione dal clone.** L'installer rimuove il collegamento ad `apod.pyw` in Esecuzione automatica anche se punta a un'altra cartella (voluto, per non cambiare sfondo due volte). Sovrascrive anche un `Cambia sfondo.lnk` sul Desktop fatto a mano, perché sul file system il nome è uguale a meno delle maiuscole. La disinstallazione poi lo cancella. Il ReadMe potrebbe dire che l'installer sostituisce un'installazione dal clone.
+
+## Seguito (da Linux, stesso giorno)
+
+Correzioni dei bug aperti, provate su Linux. Le parti solo Windows sono da verificare alla prossima prova su Windows.
+
+| Bug | Correzione | Provato |
+|---|---|---|
+| 1. Messaggio finale della disinstallazione | La finestra Impostazioni si chiude prima del messaggio; su Windows il messaggio usa `show_popup` (`MessageBoxW` con `MB_SYSTEMMODAL`, sempre in primo piano) con la finestra principale nascosta. | No: da rifare su Windows con la disinstallazione vera. |
+| 2. Doppia finestra dopo la reinstallazione | Dopo una reinstallazione "Salva" chiude e basta; la finestra principale si apre solo alla prima installazione. | Logica sì (Linux). |
+| 3. Prima installazione annullata | `build_settings` usa `read_config()` e `install()` non chiama più `load_config()`: `config.json` nasce solo con "Installa". | Sì: dopo "Annulla" il file non esiste. |
+| 4. `Find-Python` senza Tk | Prova anche `import tkinter` e preferisce il primo candidato con Tk; se nessuno ce l'ha restituisce il primo funzionante e resta l'avviso esistente. `$ErrorActionPreference = 'Continue'` dentro la funzione. | No: solo Windows. |
+| 5. Ordine del glob `Python3*` | `Sort-Object` sul numero dopo `Python3`. | No: solo Windows. |
+| 6. `check_update()` oltre 250 commit | Punta del ramo da `commits/<ramo>`, `compare` solo per l'elenco; nuovo campo `totale` (da `ahead_by`) per i conteggi nella UI. Restituisce `None` anche se la versione è più avanti del ramo. | Sì, contro GitHub: da `734e5be` 6 novità e punta corretta; aggiornato → `None`; clone più avanti di `master` → `None`. |
+| 7. Messaggi minori | Gli installer passano `--precedente=<commit>` e la finestra dice "già all'ultima versione" se non è cambiato niente. Download in `try/catch` (`installa.ps1`) e `|| errore_download` (`installa.sh`) con messaggio in italiano. | Testi della finestra sì (Linux); `installa.ps1` no. |
+| 8. Vecchia installazione dal clone | Nota aggiunta al ReadMe. | — |

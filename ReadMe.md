@@ -38,7 +38,7 @@ The program lives in `%LOCALAPPDATA%\APOD_wallpaper` (Windows) or `~/.local/shar
 
 **Uninstalling:** **⚙️ Impostazioni → Disinstalla**. It removes auto-start and shortcuts, and optionally the program folder.
 
-**Coming from an older git clone?** Copy `config.json` and `statistiche.json` from the clone into the new folder to keep your key and statistics. On Windows the installer removes the old shortcut from the Startup folder by itself.
+**Coming from an older git clone?** The installer replaces it: copy `config.json` and `statistiche.json` from the clone into the new folder to keep your key and statistics. On Windows the installer removes the old `apod.pyw` shortcut from the Startup folder and overwrites a `Cambia sfondo` shortcut on the desktop. You can then delete the clone.
 
 ## API Keys
 * **NASA (APOD & Image Library):** no key needed.

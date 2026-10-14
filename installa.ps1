@@ -13,7 +13,10 @@
     $dest = Join-Path $env:LOCALAPPDATA 'APOD_wallpaper'
 
     # Percorso di python.exe, oppure $null. Lo stub "python" di WindowsApps apre il Microsoft Store: si salta.
+    # Preferisce un Python con Tk; se nessuno ce l'ha restituisce il primo che funziona, e l'avviso arriva dopo.
     function Find-Python {
+        # Con 'Stop' PowerShell 5 trasformerebbe il traceback su stderr in un errore (vale solo dentro la funzione)
+        $ErrorActionPreference = 'Continue'
         $candidates = @()
         $py = Get-Command py -ErrorAction SilentlyContinue
         if ($py) { $candidates += [pscustomobject]@{ Exe = $py.Source; Args = @('-3') } }
@@ -21,17 +24,24 @@
             if ($c.Source -notlike '*\WindowsApps\*') { $candidates += [pscustomobject]@{ Exe = $c.Source; Args = @() } }
         }
         # L'installer di python.org per il solo utente non aggiunge Python al PATH
-        foreach ($f in @(Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending)) {
+        # Ordinati per versione: come stringhe Python39 verrebbe prima di Python313
+        $installed = @(Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue |
+            Sort-Object { [int]('0' + ($_.Directory.Name -replace '^Python3(\d*).*$', '$1')) } -Descending)
+        foreach ($f in $installed) {
             $candidates += [pscustomobject]@{ Exe = $f.FullName; Args = @() }
         }
+        $senzaTk = $null
         foreach ($c in $candidates) {
             $exeArgs = @($c.Args)
             try {
                 $out = & $c.Exe @exeArgs -c "import sys; print(sys.executable)" 2>$null
-                if ($LASTEXITCODE -eq 0 -and $out) { return "$out".Trim() }
+                if ($LASTEXITCODE -ne 0 -or -not $out) { continue }
+                & $c.Exe @exeArgs -c "import tkinter" 2>$null
+                if ($LASTEXITCODE -eq 0) { return "$out".Trim() }
+                if (-not $senzaTk) { $senzaTk = "$out".Trim() }
             } catch { }
         }
-        return $null
+        return $senzaTk
     }
 
     $python = Find-Python
@@ -49,16 +59,22 @@
     }
     Write-Host "Python: $python"
 
-    Write-Host "Scarico APOD Wallpaper (ramo $ramo)..."
-    $commit = Invoke-RestMethod "https://api.github.com/repos/$repo/commits/$ramo"
-    $sha = $commit.sha
-    # PowerShell 7 converte da solo le date ISO in DateTime, PowerShell 5 no
-    $data = $commit.commit.committer.date
-    $data = if ($data -is [datetime]) { $data.ToString('yyyy-MM-dd') } else { "$data".Substring(0, 10) }
+    # Versione gia' installata: la finestra finale dira' se e' cambiata
+    $precedente = ''
+    $fileVersione = Join-Path $dest 'versione.json'
+    if (Test-Path $fileVersione) {
+        try { $precedente = "$((Get-Content $fileVersione -Raw | ConvertFrom-Json).commit)" } catch { }
+    }
 
+    Write-Host "Scarico APOD Wallpaper (ramo $ramo)..."
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('apod_' + [guid]::NewGuid())
     New-Item -ItemType Directory -Path $tmp | Out-Null
     try {
+        $commit = Invoke-RestMethod "https://api.github.com/repos/$repo/commits/$ramo"
+        $sha = $commit.sha
+        # PowerShell 7 converte da solo le date ISO in DateTime, PowerShell 5 no
+        $data = $commit.commit.committer.date
+        $data = if ($data -is [datetime]) { $data.ToString('yyyy-MM-dd') } else { "$data".Substring(0, 10) }
         $zip = Join-Path $tmp 'apod.zip'
         Invoke-WebRequest "https://github.com/$repo/archive/$sha.zip" -OutFile $zip -UseBasicParsing
         Expand-Archive $zip -DestinationPath $tmp
@@ -66,12 +82,16 @@
         New-Item -ItemType Directory -Force -Path $dest | Out-Null
         # Solo i file della radice della repo
         Get-ChildItem $src.FullName -File -Force | Where-Object Name -ne '.gitignore' | Copy-Item -Destination $dest -Force
+    } catch {
+        Write-Host "Download non riuscito: controlla la connessione e riprova (ramo $ramo)." -ForegroundColor Yellow
+        Write-Host "Dettagli: $($_.Exception.Message)" -ForegroundColor DarkGray
+        return
     } finally {
         Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }
     # Senza BOM: Set-Content -Encoding UTF8 di PowerShell 5 lo aggiungerebbe
     $versione = [ordered]@{ commit = $sha; ramo = $ramo; data = $data } | ConvertTo-Json
-    [IO.File]::WriteAllText((Join-Path $dest 'versione.json'), $versione)
+    [IO.File]::WriteAllText($fileVersione, $versione)
 
     Write-Host 'Installo le dipendenze (requests, Pillow)...'
     & $python -m pip install --user --disable-pip-version-check requests pillow
@@ -89,5 +109,7 @@
     $pythonw = Join-Path (Split-Path $python) 'pythonw.exe'
     if (-not (Test-Path $pythonw)) { $pythonw = $python }
     Write-Host "Installato in $dest. Si apre la finestra delle impostazioni..."
-    Start-Process -FilePath $pythonw -ArgumentList @(('"' + (Join-Path $dest 'cambia_sfondo.pyw') + '"'), '--installa') -WorkingDirectory $dest
+    $uiArgs = @(('"' + (Join-Path $dest 'cambia_sfondo.pyw') + '"'), '--installa')
+    if ($precedente) { $uiArgs += "--precedente=$precedente" }
+    Start-Process -FilePath $pythonw -ArgumentList $uiArgs -WorkingDirectory $dest
 }
