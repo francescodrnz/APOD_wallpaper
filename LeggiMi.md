@@ -2,13 +2,13 @@
 
 *[Read in English](ReadMe.md)*
 
-Cambia-sfondo automatico per Windows 10/11 e Linux (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, Budgie). Gli stessi script riconoscono da soli il sistema. Scarica immagini ad alta risoluzione dalla **NASA** e da **Unsplash**, le adatta allo schermo con un **Ambient Blur** (niente bande nere) e sincronizza il **colore d'accento di Windows** (solo Windows).
+Cambia-sfondo automatico per Windows 10/11 e Linux (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, Budgie). Gli stessi script riconoscono da soli il sistema. Scarica immagini ad alta risoluzione da **NASA**, **ESA (Hubble e Webb)**, **Wikimedia Commons**, **Bing** e **Unsplash**, le adatta allo schermo con un **Ambient Blur** (niente bande nere) e sincronizza il **colore d'accento di Windows** (solo Windows).
 
 ## Funzioni principali
 * **Installazione con una riga:** niente git, niente configurazione a mano. L'installer installa anche Python (Windows) o le dipendenze (Linux) se mancano.
 * **Ridimensionamento intelligente:** riempie lo schermo con un "Ambient Blur" in stile cinematografico, mantenendo le proporzioni originali senza ritagliare. La modalità di adattamento dello sfondo viene impostata da sola.
 * **Colore d'accento:** prende il colore dominante dello sfondo e lo applica all'interfaccia di Windows (compatibile con il tema scuro). Si può disattivare nelle impostazioni.
-* **Più fonti:** alterna NASA APOD, NASA Image Library e Unsplash (natura/spazio).
+* **Più fonti:** alterna NASA APOD, NASA Image Library (senza le foto di eventi e conferenze), le foto della settimana e del mese di ESA Hubble e Webb, la foto del giorno di Wikimedia Commons, l'immagine del giorno di Bing e Unsplash (natura/spazio).
 * **Finestra delle impostazioni:** lingua, avvio automatico, collegamenti, chiave Unsplash, cartelle, aggiornamenti e disinstallazione, tutto in un posto.
 * **Italiano e inglese:** la lingua segue quella del sistema e si può cambiare all'installazione o nelle impostazioni.
 * **Avviso di aggiornamento:** la finestra avvisa quando su GitHub c'è una versione nuova e si aggiorna con un clic.
@@ -45,8 +45,8 @@ Il programma sta in `%LOCALAPPDATA%\APOD_wallpaper` (Windows) o `~/.local/share/
 **Arrivi da un vecchio clone git?** Lancia la riga di installazione: l'installer prende il posto del clone. Se il clone partiva all'accesso o da un collegamento, come dicevano le vecchie istruzioni, l'installer lo trova e porta qui chiave Unsplash, categorie e statistiche (la finestra di installazione dice da dove le ha prese). Altrimenti, dopo l'installazione, copia `config.json` e `statistiche.json` dal clone nella nuova cartella. Il vecchio avvio automatico e il vecchio collegamento `Cambia sfondo` vengono sostituiti, così lo sfondo non cambia due volte all'accesso. Poi puoi cancellare il clone.
 
 ## Chiavi API
-* **NASA (APOD e Image Library):** non serve nessuna chiave.
-* **Unsplash (facoltativa):** senza chiave lo script usa solo le fonti NASA. Per avere anche le immagini di Unsplash, prendi una chiave gratuita su [unsplash.com/developers](https://unsplash.com/developers) (Register -> Create a new App -> copia la Access Key) e incollala in **⚙️ Impostazioni**.
+* **NASA (APOD e Image Library), ESA Hubble e Webb, Wikimedia Commons, Bing:** non serve nessuna chiave.
+* **Unsplash (facoltativa):** senza chiave lo script usa tutte le altre fonti. Per avere anche le immagini di Unsplash, prendi una chiave gratuita su [unsplash.com/developers](https://unsplash.com/developers) (Register -> Create a new App -> copia la Access Key) e incollala in **⚙️ Impostazioni**.
 
 ## Finestra e statistiche (`cambia_sfondo.pyw`)
 Apri **Cambia Sfondo** (**Change Wallpaper** in inglese) dal menu Start, dal menu delle applicazioni o dal collegamento sul desktop.

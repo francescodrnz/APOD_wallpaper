@@ -1,5 +1,6 @@
 import subprocess
 import os
+import ast
 import io
 import ctypes
 import random
@@ -12,7 +13,8 @@ from pathlib import Path
 
 # comune installa requests e pillow se mancano, quindi va importato prima di loro
 from comune import (IS_WINDOWS, BG_PROCESS, IMAGES_DIR, get_current_wallpaper, set_wallpaper,
-                    update_windows_accent, load_stats, is_excluded, write_info, read_info, load_config, unsplash_key, tr)
+                    update_windows_accent, load_stats, is_excluded, write_info, read_info, load_config, unsplash_key, tr,
+                    language, REPO)
 
 import requests
 from PIL import Image, ImageFilter, ImageEnhance
@@ -28,6 +30,8 @@ PREFETCH_DIR = IMAGES_DIR / "prossimo"
 
 # Una sola sessione: riusa le connessioni HTTPS invece di rifare ogni volta l'handshake
 SESSION = requests.Session()
+# Wikimedia rifiuta lo user agent predefinito di requests
+SESSION.headers["User-Agent"] = f"APOD_wallpaper (https://github.com/{REPO})"
 
 config = load_config()
 UNSPLASH_API_KEY = unsplash_key(config)
@@ -198,6 +202,21 @@ def get_unsplash_image():
         }
     except: return None
 
+# Le foto della sede (HQ) e del Kennedy (KSC) sono quasi tutte di eventi, conferenze e satelliti in hangar
+NASA_EXCLUDED_CENTERS = {"HQ", "KSC"}
+# Negli altri centri le stesse foto si riconoscono da titolo e parole chiave
+NASA_EXCLUDED_WORDS = re.compile(
+    r"\b(conferences?|ceremon(y|ies)|briefings?|celebrations?|awards?|astronaut candidates?|official portrait|press"
+    r"|media (day|invited|event)|meetings?|visits?|visitors?|processing|symposium|workshops?|forum|panel|interviews?"
+    r"|announcements?|hall of fame|congress|hearing|lectures?|reception|orchestra|students?|employees?|tour|speaks"
+    r"|speech|signing|summit|memorial|gala|exhibits?|exhibition|town hall|training|rehearsal)\b", re.IGNORECASE)
+
+def _nasa_wallpaper_item(item):
+    meta = item["data"][0]
+    if meta.get("center") in NASA_EXCLUDED_CENTERS: return False
+    text = " ".join([str(meta.get("title") or "")] + [str(k) for k in meta.get("keywords", [])])
+    return not NASA_EXCLUDED_WORDS.search(text)
+
 def get_nasa_image_library():
     queries = config.get("nasa_categories", ["galaxy"])
     valid_queries = get_valid_categories(queries)
@@ -223,6 +242,7 @@ def get_nasa_image_library():
                         if new_items: items = new_items
                 except: pass
 
+        items = [it for it in items if _nasa_wallpaper_item(it)]
         if not items: return None
 
         item = random.choice(items)
@@ -254,6 +274,94 @@ def get_nasa_image_library():
         }
     except: return None
 
+# Hubble: foto della settimana dal 2010 al 2025, poi foto del mese. Webb: foto del mese da luglio 2022.
+# Il peso tiene conto di quante ce ne sono: Hubble ne ha molte di piu'.
+ESA_SITES = [("ESA Hubble", "esahubble.org", datetime(2010, 1, 1), 3),
+             ("ESA Webb", "esawebb.org", datetime(2022, 7, 1), 1)]
+
+def _esa_text(value):
+    # L'API restituisce i testi come repr di bytes Python ("b'...'"), con l'UTF-8 in sequenze \x..
+    value = value or ""
+    if value[:2] in ("b'", 'b"'):
+        try: value = ast.literal_eval(value).decode("utf-8")
+        except: pass
+    return _strip_tags(value)
+
+def get_esa_image():
+    name, site, start, _ = random.choices(ESA_SITES, weights=[s[3] for s in ESA_SITES])[0]
+    day = start + timedelta(days=random.randint(0, (datetime.now() - start).days))
+    if site == "esahubble.org" and day.year < 2026:
+        year, week, _ = day.isocalendar()
+        image_id = f"potw{year % 100:02d}{week:02d}a"
+    else:
+        image_id = f"potm{day:%y%m}a"
+    try:
+        # Una settimana o un mese senza foto restituisce 404: conta come tentativo fallito
+        res = SESSION.get(f"https://{site}/images/{image_id}/api/json/", timeout=TIMEOUT)
+        res.raise_for_status()
+        data = res.json()
+        large = next((r for r in data.get("Resources", []) if r.get("ResourceType") == "Large"), None)
+        # "Large" e' il JPEG a piena risoluzione; i rari mosaici giganti si saltano
+        if not large or large.get("FileSize", 0) > 40_000_000: return None
+        # In alcuni crediti "Acknowledgement:" e' attaccato alla parola prima gia' all'origine
+        credit = re.sub(r"(?<=\S)(Acknowledge?ments?:)", r" \1", _esa_text(data.get("Credit")))
+        return {
+            "url": large["URL"], "title": _esa_text(data.get("Title")) or image_id,
+            "description": f"Credit: {credit.rstrip('.')}.\n{_esa_text(data.get('Description'))}",
+            "date": str(data.get("Date", ""))[:10], "source": name
+        }
+    except: return None
+
+# La foto del giorno di Wikimedia Commons esiste dalla fine del 2004
+WIKIMEDIA_START = datetime(2005, 1, 1)
+
+def get_wikimedia_image():
+    day = random_date(WIKIMEDIA_START, datetime.now())
+    params = {
+        "action": "query", "format": "json", "formatversion": 2, "generator": "images",
+        "titles": f"Template:Potd/{day}", "prop": "imageinfo", "iiprop": "url|size|mime|extmetadata",
+        # Commons ridimensiona lato server (arrotondando a una misura standard)
+        "iiurlwidth": screen_size()[0], "iiextmetadatafilter": "ObjectName|ImageDescription|Artist",
+        "iiextmetadatalanguage": language()
+    }
+    try:
+        res = SESSION.get("https://commons.wikimedia.org/w/api.php", params=params, timeout=TIMEOUT)
+        res.raise_for_status()
+        pages = [p for p in res.json().get("query", {}).get("pages", []) if p.get("imageinfo")]
+        if not pages: return None
+        page = max(pages, key=lambda p: p["imageinfo"][0].get("width", 0))
+        info = page["imageinfo"][0]
+        # Molte foto del giorno sono verticali o panoramiche: con le bande sfocate resterebbero una striscia
+        if info.get("mime", "").startswith("video") or not 1 < info["width"] / info["height"] <= 2.5: return None
+        if not info.get("thumburl"): return None
+        meta = {k: _strip_tags(str(v.get("value", ""))) for k, v in info.get("extmetadata", {}).items()}
+        title = meta.get("ObjectName") or re.sub(r"^File:|\.\w+$", "", page["title"])
+        return {
+            "url": info["thumburl"], "title": title,
+            "description": f"Credit: {meta.get('Artist', 'Wikimedia Commons').rstrip('.')}.\n{meta.get('ImageDescription', '')}",
+            "date": day, "source": "Wikimedia Commons"
+        }
+    except: return None
+
+def get_bing_image():
+    # Immagine del giorno di Bing: l'archivio arriva indietro solo di circa due settimane (idx 0-7, 8 per volta)
+    market = "it-IT" if language() == "it" else "en-US"
+    try:
+        res = SESSION.get("https://www.bing.com/HPImageArchive.aspx",
+                          params={"format": "js", "idx": random.choice([0, 7]), "n": 8, "mkt": market},
+                          timeout=TIMEOUT)
+        res.raise_for_status()
+        # wp=False: Bing non la offre come sfondo
+        images = [i for i in res.json().get("images", []) if i.get("wp") and i.get("urlbase")]
+        if not images: return None
+        img = random.choice(images)
+        d = img.get("startdate", "")
+        return {
+            "url": f"https://www.bing.com{img['urlbase']}_UHD.jpg", "title": img.get("title") or "Bing",
+            "description": img.get("copyright", ""), "date": f"{d[:4]}-{d[4:6]}-{d[6:8]}", "source": "Bing"
+        }
+    except: return None
+
 # --- MAIN LOOP ---
 
 def recent_images():
@@ -264,7 +372,8 @@ def recent_images():
 def find_image(screen):
     # Prova le fonti in ordine casuale; un download fallito, un'immagine troppo piccola o gia' in cache
     # contano come tentativo fallito. Restituisce (metadati, immagine adattata) o (None, None).
-    apis = [get_apod_data, get_unsplash_image, get_nasa_image_library]
+    apis = [get_apod_data, get_unsplash_image, get_nasa_image_library, get_esa_image, get_wikimedia_image,
+            get_bing_image]
     random.shuffle(apis)
     # Senza questo controllo l'APOD di oggi tornerebbe a ogni cambio, anche nel prefetch subito dopo lo sfondo
     seen = recent_images()

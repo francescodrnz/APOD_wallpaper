@@ -47,8 +47,8 @@ EN = {
     "Collegamento a questa finestra nel {menu}": "Shortcut to this window in the {menu}",
     "Collegamento a questa finestra sul desktop": "Shortcut to this window on the desktop",
     "Fonti": "Sources",
-    "Chiave Unsplash (facoltativa: senza, le immagini arrivano solo dalla NASA)":
-        "Unsplash key (optional: without it, images come only from NASA)",
+    "Chiave Unsplash (facoltativa: senza, si usano solo le altre fonti)":
+        "Unsplash key (optional: without it, only the other sources are used)",
     "Ottieni una chiave gratuita (Register → New Application → Access Key)":
         "Get a free key (Register → New Application → Access Key)",
     "Aspetto": "Appearance",

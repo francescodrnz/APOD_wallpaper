@@ -165,7 +165,7 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
         tk.Checkbutton(f, text=text, variable=var, font=FONT).pack(anchor=tk.W)
 
     f = section(tr("Fonti"))
-    tk.Label(f, text=tr("Chiave Unsplash (facoltativa: senza, le immagini arrivano solo dalla NASA)"),
+    tk.Label(f, text=tr("Chiave Unsplash (facoltativa: senza, si usano solo le altre fonti)"),
              font=FONT, justify=tk.LEFT, wraplength=480).pack(anchor=tk.W)
     entry_key = tk.Entry(f, width=48, font=FONT)
     entry_key.insert(0, initial("key", lambda: unsplash_key(cfg)))

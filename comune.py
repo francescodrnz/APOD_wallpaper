@@ -160,7 +160,7 @@ def load_config():
     return config
 
 def unsplash_key(config):
-    # Chiave assente o ancora segnaposto: Unsplash viene saltato e restano le fonti NASA
+    # Chiave assente o ancora segnaposto: Unsplash viene saltato e restano le altre fonti
     key = (config.get("UNSPLASH_API_KEY") or "").strip()
     return "" if key == UNSPLASH_KEY_PLACEHOLDER or "INSERISCI" in key else key
 

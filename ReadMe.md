@@ -2,13 +2,13 @@
 
 *[Leggi in italiano](LeggiMi.md)*
 
-Automated wallpaper switcher for Windows 10/11 and Linux (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, Budgie). The same scripts detect the system on their own. Fetches high-res imagery from **NASA** and **Unsplash**, adapts them to your screen using **Ambient Blur** (no black bars), and dynamically syncs the **Windows UI accent color** (Windows only).
+Automated wallpaper switcher for Windows 10/11 and Linux (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, Budgie). The same scripts detect the system on their own. Fetches high-res imagery from **NASA**, **ESA (Hubble & Webb)**, **Wikimedia Commons**, **Bing** and **Unsplash**, adapts them to your screen using **Ambient Blur** (no black bars), and dynamically syncs the **Windows UI accent color** (Windows only).
 
 ## Key Features
 * **One-Line Install:** no git, no manual setup. The installer also installs Python (Windows) or the dependencies (Linux) when they are missing.
 * **Smart Resize:** Automatically applies a cinematic "Ambient Blur" to fill the screen, preserving the original aspect ratio without cropping. The wallpaper fit mode is set automatically.
 * **DWM Color Sync:** Extracts the dominant color from the wallpaper and applies it to the Windows interface (Dark Mode safe). Can be turned off in the settings.
-* **Multi-Source:** Cycles through NASA APOD, NASA Library, and Unsplash (Nature/Space).
+* **Multi-Source:** Cycles through NASA APOD, NASA Library (without event and conference photos), ESA Hubble and Webb pictures of the week/month, the Wikimedia Commons picture of the day, the Bing image of the day and Unsplash (Nature/Space).
 * **Settings Window:** language, auto-start, shortcuts, Unsplash key, folders, updates and uninstall, all in one place.
 * **English and Italian:** the language follows the system and can be changed at install time or in the settings.
 * **Update Notice:** the window tells you when a new version is on GitHub and updates with one click.
@@ -45,8 +45,8 @@ The program lives in `%LOCALAPPDATA%\APOD_wallpaper` (Windows) or `~/.local/shar
 **Coming from an older git clone?** Just run the install line: the installer replaces the clone. If the clone was started at login or from a shortcut, as the old instructions said, the installer finds it and brings over your Unsplash key, categories and statistics (the setup window shows where it took them from). Otherwise copy `config.json` and `statistiche.json` from the clone into the new folder after installing. The old auto-start and the old `Cambia sfondo` shortcut are replaced, so the wallpaper does not change twice at login. You can then delete the clone.
 
 ## API Keys
-* **NASA (APOD & Image Library):** no key needed.
-* **Unsplash (optional):** without a key the script only uses NASA sources. To add Unsplash images, get a free key at [unsplash.com/developers](https://unsplash.com/developers) (Register -> Create a new App -> Copy Access Key) and paste it in **⚙️ Settings**.
+* **NASA (APOD & Image Library), ESA Hubble & Webb, Wikimedia Commons, Bing:** no key needed.
+* **Unsplash (optional):** without a key the script uses all the other sources. To add Unsplash images, get a free key at [unsplash.com/developers](https://unsplash.com/developers) (Register -> Create a new App -> Copy Access Key) and paste it in **⚙️ Settings**.
 
 ## UI & Statistics (`cambia_sfondo.pyw`)
 Open **Change Wallpaper** (**Cambia Sfondo** in Italian) from the Start menu, the applications menu or the desktop shortcut.
