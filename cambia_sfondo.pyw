@@ -21,9 +21,9 @@ from comune import (IS_WINDOWS, BG_PROCESS, BASE_DIR, CONFIG_FILE, STATS_FILE, I
 FONT = ("Segoe UI", 9)
 
 def make_modal(win):
+    # Legata alla finestra principale, che e' sempre in primo piano e altrimenti la coprirebbe
+    win.transient(win.master)
     if IS_WINDOWS:
-        # Legata alla finestra principale, che e' sempre in primo piano e altrimenti la coprirebbe
-        win.transient(win.master)
         win.grab_set()
         return
     # Su Linux la finestra diventa visibile solo quando il window manager la mostra:
@@ -649,9 +649,9 @@ def main():
         btn_save.pack(pady=10)
 
         if not IS_WINDOWS:
-            # Con il font di Linux la misura fissa tagliava "Salva e Chiudi": allarga se serve
+            # Con il font di Linux la misura fissa tagliava "Salva e Chiudi": allarga se serve e ricentra
             manage_win.update_idletasks()
-            manage_win.geometry(f"{max(600, manage_win.winfo_reqwidth())}x{max(450, manage_win.winfo_reqheight())}")
+            center(manage_win, (max(600, manage_win.winfo_reqwidth()), max(450, manage_win.winfo_reqheight())))
 
     def open_settings():
         settings_win = tk.Toplevel(root)
