@@ -20,19 +20,14 @@ Copia in una cartella temporanea e `HOME` finta: copertura delle traduzioni (nes
 
 ## Preparazione
 
-1. `git fetch && git checkout bilingue && git pull`. Serve il commit che contiene questo file.
-2. Backup, come nei giri precedenti, in `%TEMP%\apod_backup_bilingue`:
-   - `reg export` di `HKCU\Control Panel\Desktop`, `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent`, `HKCU\Software\Microsoft\Windows\DWM`;
-   - lo sfondo attuale (percorso da `SystemParametersInfoW`) e i `.lnk` del programma nel menu Start, sul Desktop e in Esecuzione automatica;
-   - se esiste, tutta `%LOCALAPPDATA%\APOD_wallpaper` (soprattutto `config.json`, `statistiche.json`, `versione.json`).
-3. Annota lo stato di partenza: cosa c'è installato, da quale ramo e commit, quali collegamenti esistono e con che nome.
-4. Chiedi conferma all'utente prima di ogni azione che cambia lo sfondo, i collegamenti o l'avvio automatico veri.
+- `git fetch && git checkout bilingue && git pull`. Serve il commit che contiene questo file.
+- L'utente non vuole accorgimenti: puoi cambiare sfondo, lingua, collegamenti, avvio automatico e installazione quanto serve per i test, senza backup e senza chiedere conferma.
 
 ## Cosa verificare
 
 1. **Controlli statici.** `python -c "import ast; [ast.parse(open(f, encoding='utf-8').read()) for f in ('comune.py', 'apod.pyw', 'cambia_sfondo.pyw', 'testi.py')]"`. Poi, con `ast`, raccogli le stringhe passate a `tr(` nei tre file Python e confrontale con le chiavi di `EN`: non ne deve mancare nessuna. `python -c "import comune; print(comune.system_language())"` deve dare `it` se Windows è in italiano.
 
-2. **Installer.** Con l'installazione vera, dopo il backup:
+2. **Installer.** Con l'installazione vera:
    - `$env:APOD_RAMO = 'bilingue'` e poi `irm https://raw.githubusercontent.com/francescodrnz/APOD_wallpaper/bilingue/installa.ps1 | iex` (prendi lo script dal ramo, non da `master`). Deve girare fino in fondo su PowerShell 5.1 con i messaggi in italiano; `T` deve funzionare anche dentro il blocco `& { }` letto da `iex`. In `%LOCALAPPDATA%\APOD_wallpaper` deve esserci `testi.py`.
    - Messaggi inglesi senza cambiare la lingua di Windows: scarica `installa.ps1` in una cartella temporanea, sostituisci la riga di `$it` con `$it = $false` e lancialo con `$env:APOD_RAMO = 'bilingue'`. Controlla che i messaggi siano in inglese. Per vedere anche il messaggio di errore, prova un ramo che non esiste.
 
@@ -41,7 +36,7 @@ Copia in una cartella temporanea e `HOME` finta: copertura delle traduzioni (nes
    - Togli una casella e scrivi qualcosa nella chiave, poi passa a "English": tutti i testi in inglese ("APOD Wallpaper Setup", pulsante "Install"), le caselle e la chiave come le avevi lasciate. La finestra deve restare in primo piano (`-topmost`), centrata, senza testi tagliati. Torna a "Italiano" e ricontrolla.
    - Chiudi con **Annulla**: nella cartella temporanea non deve comparire `config.json`.
 
-4. **Impostazioni e collegamenti** (sull'installazione vera, con conferma dell'utente).
+4. **Impostazioni e collegamenti** (sull'installazione vera).
    - Apri la finestra principale dal menu Start → "⚙️ Impostazioni" → "English" → **Annulla**. La finestra principale deve restare in italiano; riaprendo le Impostazioni, la lingua selezionata è "Italiano".
    - "⚙️ Impostazioni" → "English" → **Save**. La finestra principale si deve riaprire in inglese. Nel menu Start e sul Desktop deve esserci solo `Change Wallpaper.lnk`, senza `Cambia Sfondo.lnk`. Controlla con `WScript.Shell` destinazione, argomenti, cartella di lavoro e icona (uguali a prima) e `Description` = "Rate and change the wallpaper". In `config.json`: `"lingua": "en"`.
    - Di nuovo in italiano con "Salva": deve tornare solo `Cambia Sfondo.lnk`, con la descrizione italiana.
@@ -51,16 +46,16 @@ Copia in una cartella temporanea e `HOME` finta: copertura delle traduzioni (nes
 5. **Finestre in inglese a misura fissa.** Con la lingua inglese:
    - Finestra principale (340x350 fissa su Windows): niente pulsanti o testi tagliati, in particolare "🔄 Change\n(Without rating)", "👍 Like!\n(Already rated)" e "What to do with this wallpaper?". Prova anche con la banda dell'aggiornamento (punto 6).
    - "📄 Open info", "📊 Statistics" (600x450: intestazioni "Unsplash Themes" / "NASA Queries", "+ Add", "- Remove", "Save and Close"), "⚙️ Settings", e le scritte di stato ("⏳ Downloading wallpaper... (Ns)", "✅ Wallpaper changed!").
-   - Fai gli screenshot e **chiedi conferma all'utente**. Se qualcosa è tagliato, accorcia il testo inglese in `testi.py`: non cambiare le misure delle finestre.
+   - Controlla con gli screenshot. Se qualcosa è tagliato, accorcia il testo inglese in `testi.py`: non cambiare le misure delle finestre.
 
 6. **Aggiornamento da una versione senza lingua.** È il percorso degli utenti attuali: il vecchio `apply_update` deve portare anche `testi.py`.
    - Installa la versione di `master` (installer senza `APOD_RAMO`). Cancella `testi.py`, rimasto dal punto 2 (l'installer copia i file ma non toglie quelli in più), e togli `"lingua"` dal config se c'è.
    - In `versione.json` metti `"ramo": "bilingue"` lasciando il commit di `master`. Riapri la finestra principale: deve comparire la banda "Aggiorna". Premi e accetta.
    - La finestra si deve riaprire senza errori, nella lingua di sistema. Nel config deve comparire `"lingua"`, e `testi.py` deve essere nella cartella.
 
-7. **Disinstalla in inglese** (facoltativo, solo se l'utente è d'accordo): i messaggi sono in inglese, `MessageBoxW` compreso, e spariscono i collegamenti in tutte e due le lingue e l'avvio automatico. Poi reinstalla per il ripristino.
+7. **Disinstalla in inglese:** i messaggi sono in inglese, `MessageBoxW` compreso, e spariscono i collegamenti in tutte e due le lingue e l'avvio automatico. Poi reinstalla.
 
-8. **Ripristino.** Riporta tutto allo stato di partenza: `reg import` dei quattro file, controllato con un nuovo `reg export`, sfondo originale e accento (`WM_SETTINGCHANGE "ImmersiveColorSet"`), `.lnk` con i nomi di prima. Rimetti `%LOCALAPPDATA%\APOD_wallpaper` come era, con `versione.json` sul ramo e sul commit di partenza, così l'installazione vera dell'utente non resta agganciata a `bilingue`.
+8. **Fine.** Lascia il programma installato e funzionante, con le impostazioni che preferisci. In `versione.json` metti `"ramo": "master"`, altrimenti dopo il merge l'installazione cercherebbe gli aggiornamenti su un ramo che non c'è più.
 
 ## Alla fine: unico giro
 
@@ -71,5 +66,5 @@ Copia in una cartella temporanea e `HOME` finta: copertura delle traduzioni (nes
 - Commit in italiano, Conventional Commits, una riga.
 - Scrivi i risultati in `docs/verifica-windows.md`: ambiente, tabella passo/esito/dettagli, correzioni fatte con il loro commit.
 - In `docs/da-windows.md` scrivi **una volta sola**, in una sezione datata con il commit di partenza: cosa hai cambiato nel codice condiviso e cosa va ricontrollato su Linux. Niente proposte, domande o decisioni. La sessione Linux sistema quello che resta, toglie `docs/` e fa il merge su `master` senza rimandare niente a Windows.
-- Fai commit e push sul ramo `bilingue`, poi controlla che il PC sia tornato allo stato di partenza.
+- Fai commit e push sul ramo `bilingue`.
 - All'utente di' una riga sola: il ramo è pronto per il merge, oppure c'è qualcosa in `docs/da-windows.md` per la sessione Linux.
