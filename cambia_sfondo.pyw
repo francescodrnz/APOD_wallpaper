@@ -581,6 +581,8 @@ def main():
                 refresh_ui("✅ Impostazioni salvate", "green")
 
         build_settings(root, settings_win, close)
+        # Senza posizione Tk su Windows la apre nell'angolo in alto a sinistra dello schermo
+        center(settings_win)
         make_modal(settings_win)
 
     def show_banner(update, error):
