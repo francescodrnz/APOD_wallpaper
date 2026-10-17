@@ -38,7 +38,7 @@ The program lives in `%LOCALAPPDATA%\APOD_wallpaper` (Windows) or `~/.local/shar
 
 **Uninstalling:** **⚙️ Impostazioni → Disinstalla**. It removes auto-start and shortcuts, and optionally the program folder.
 
-**Coming from an older git clone?** The installer replaces it: copy `config.json` and `statistiche.json` from the clone into the new folder to keep your key and statistics. On Windows the installer removes the old `apod.pyw` shortcut from the Startup folder and overwrites a `Cambia sfondo` shortcut on the desktop. You can then delete the clone.
+**Coming from an older git clone?** Just run the install line: the installer replaces the clone. If the clone was started at login or from a shortcut, as the old instructions said, the installer finds it and brings over your Unsplash key, categories and statistics (the setup window shows where it took them from). Otherwise copy `config.json` and `statistiche.json` from the clone into the new folder after installing. The old auto-start and the old `Cambia sfondo` shortcut are replaced, so the wallpaper does not change twice at login. You can then delete the clone.
 
 ## API Keys
 * **NASA (APOD & Image Library):** no key needed.

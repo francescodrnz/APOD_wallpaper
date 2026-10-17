@@ -15,7 +15,7 @@ from comune import (IS_WINDOWS, BG_PROCESS, BASE_DIR, CONFIG_FILE, STATS_FILE, I
                     update_windows_accent, load_stats, is_excluded, read_info, mark_rated, list_history,
                     current_index, load_config, save_config, unsplash_key, autostart_enabled, set_autostart,
                     shortcut_exists, set_shortcuts, open_path, is_install_dir, uninstall, local_version,
-                    check_update, apply_update)
+                    check_update, apply_update, find_old_install, import_old_install)
 
 FONT = ("Segoe UI", 9)
 
@@ -96,12 +96,13 @@ def ask_and_update(root, parent, update, set_status):
             restart_ui(root)
     run_in_background(root, lambda: apply_update(update), done)
 
-def build_settings(root, win, on_close, intro=None, first_install=False):
+def build_settings(root, win, on_close, intro=None, first_install=False, old_config=None):
     """Riempie win con le impostazioni. on_close(salvate) chiude la finestra.
-    intro: testo in cima, solo nella finestra mostrata dagli installer; first_install: prima installazione, tutto selezionato."""
+    intro: testo in cima, solo nella finestra mostrata dagli installer; first_install: prima installazione, tutto selezionato;
+    old_config: config di una vecchia installazione da portare qui."""
     install_mode = intro is not None
     # Senza creare config.json: se la prima installazione viene annullata, al rilancio deve risultare ancora la prima
-    cfg = {**DEFAULT_CONFIG, **read_config()}
+    cfg = {**DEFAULT_CONFIG, **(old_config or {}), **read_config()}
     body = tk.Frame(win, padx=12, pady=8)
     body.pack(fill=tk.BOTH, expand=True)
 
@@ -198,11 +199,12 @@ def build_settings(root, win, on_close, intro=None, first_install=False):
         win.protocol("WM_DELETE_WINDOW", lambda: None)
 
         def work():
-            cfg = load_config()
-            cfg["UNSPLASH_API_KEY"] = key
-            cfg["colore_accento"] = accent
+            # Senza config.json si parte da quello mostrato, che contiene anche le categorie della vecchia installazione
+            new_cfg = load_config() if CONFIG_FILE.exists() else dict(cfg)
+            new_cfg["UNSPLASH_API_KEY"] = key
+            new_cfg["colore_accento"] = accent
             # Tutto viene riscritto anche se non e' cambiato: cosi' i collegamenti puntano sempre a questa cartella
-            done = {"config.json": save_config(cfg), "avvio automatico": set_autostart(auto)}
+            done = {"config.json": save_config(new_cfg), "avvio automatico": set_autostart(auto)}
             links = set_shortcuts(shortcuts)
             done[f"collegamento nel {menu_name}"] = links["menu"]
             done["collegamento sul desktop"] = links["desktop"]
@@ -257,10 +259,17 @@ def install():
     first_install = not CONFIG_FILE.exists()
     previous = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--precedente=")), "")
     unchanged = previous and previous == (local_version() or {}).get("commit")
+    old_config = None
     if first_install:
         title = "Installazione APOD Wallpaper"
         intro = ("Scegli come usare APOD Wallpaper e premi Installa: il primo sfondo arriva subito dopo.\n"
                  "Potrai cambiare tutto in seguito dal pulsante Impostazioni.")
+        # Versione precedente installata a mano: chiave, categorie e statistiche passano qui
+        old_dir = find_old_install()
+        if old_dir:
+            old_config = import_old_install(old_dir)
+            intro += (f"\n\nChiave Unsplash, categorie e statistiche sono state prese dalla versione precedente, in:\n"
+                      f"{old_dir}\nDopo l'installazione puoi cancellare quella cartella.")
     elif unchanged:
         title = "APOD Wallpaper"
         intro = "APOD Wallpaper è già all'ultima versione. Qui sotto puoi cambiare le impostazioni."
@@ -282,7 +291,7 @@ def install():
         else:
             root.destroy()
 
-    build_settings(root, root, close, intro=intro, first_install=first_install)
+    build_settings(root, root, close, intro=intro, first_install=first_install, old_config=old_config)
     center(root)
     root.mainloop()
 

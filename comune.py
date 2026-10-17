@@ -4,6 +4,7 @@ import importlib.util
 import ctypes
 import json
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -571,6 +572,59 @@ def is_install_dir():
     # True se il programma gira dalla cartella degli installer e non da un clone
     try: return BASE_DIR.resolve() == INSTALL_DIR.resolve()
     except: return False
+
+def _script_folders(text):
+    # Cartelle degli script citati in un testo (riga Exec, valore del registro, byte di un .lnk).
+    # Una riga puo' contenere piu' percorsi separati da spazi, quindi si prova anche da ogni spazio in poi
+    for match in re.findall(r'(?:[A-Za-z]:\\|/)[^"\'\x00-\x1f*?<>|]*?(?:apod|cambia_sfondo)\.pyw', text, re.I):
+        for start in [0] + [i + 1 for i, ch in enumerate(match) if ch == " "]:
+            path = Path(match[start:])
+            if path.is_absolute():
+                yield path.parent
+
+def find_old_install():
+    # Cartella di una versione precedente installata a mano (di solito un clone git, seguendo il vecchio ReadMe),
+    # trovata dai collegamenti e dall'avvio automatico che puntano ai suoi script. None se non c'e'.
+    texts = []
+    try:
+        if IS_WINDOWS:
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
+                    texts.append(str(winreg.QueryValueEx(key, RUN_VALUE)[0]))
+            except OSError: pass
+            # Esecuzione automatica, desktop e menu Start. Nei .lnk il percorso e' sia in UTF-16 sia nella codifica ANSI
+            for csidl in (0x0007, 0x0010, 0x0002):
+                for lnk in _windows_folder(csidl).glob("*.lnk"):
+                    data = lnk.read_bytes()
+                    texts += [data.decode("utf-16-le", "ignore"), data[1:].decode("utf-16-le", "ignore"),
+                              data.decode("mbcs", "ignore")]
+        else:
+            for path in [*AUTOSTART_FILE.parent.glob("*.desktop"), shortcut_path("menu"), shortcut_path("desktop")]:
+                if path.is_file():
+                    texts.append(path.read_text(encoding="utf-8", errors="ignore"))
+    except: pass
+    for text in texts:
+        for folder in _script_folders(text):
+            try:
+                if folder.resolve() != BASE_DIR.resolve() and \
+                        ((folder / CONFIG_FILE.name).is_file() or (folder / STATS_FILE.name).is_file()):
+                    return folder
+            except: pass
+    return None
+
+def import_old_install(folder):
+    # Porta qui le statistiche della vecchia cartella, se qui non ce ne sono ancora, e restituisce il suo config
+    # ({} se manca). Il config non viene scritto: lo salva "Installa", cosi' se l'installazione viene annullata
+    # al rilancio e' ancora la prima.
+    try:
+        if not STATS_FILE.exists() and (folder / STATS_FILE.name).is_file():
+            shutil.copy2(folder / STATS_FILE.name, STATS_FILE)
+    except: pass
+    try:
+        with open(folder / CONFIG_FILE.name, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        return config if isinstance(config, dict) else {}
+    except: return {}
 
 def uninstall(delete_folder=False):
     # Toglie avvio automatico e collegamenti; la cartella si cancella solo se e' quella degli installer
