@@ -7,6 +7,7 @@ import os
 import shlex
 import shutil
 import sys
+import time
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -510,6 +511,17 @@ def shortcut_exists(where):
     try: return shortcut_path(where).exists()
     except: return False
 
+def _unlink(path):
+    # Su Windows un collegamento appena usato dal menu Start puo' restare aperto qualche istante
+    # e non si lascia cancellare: si riprova per qualche secondo
+    for i in range(10):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            if not IS_WINDOWS or i == 9: raise
+            time.sleep(0.5)
+
 def set_shortcuts(choices):
     # choices e' {where: on}: crea (o ricrea, aggiornando i percorsi) oppure toglie i collegamenti.
     # Restituisce {where: riuscito}.
@@ -518,13 +530,13 @@ def set_shortcuts(choices):
         try:
             path = shortcut_path(where)
             if not on:
-                path.unlink(missing_ok=True)
+                _unlink(path)
                 result[where] = True
             elif not path.parent.is_dir() and where == "desktop":
                 result[where] = False
             elif IS_WINDOWS:
                 # Tolto prima, cosi' dopo PowerShell basta vedere se il file c'e'
-                path.unlink(missing_ok=True)
+                _unlink(path)
                 links.append((where, path))
             else:
                 _write_desktop_file(path, "Cambia Sfondo", "Valuta e cambia lo sfondo",
