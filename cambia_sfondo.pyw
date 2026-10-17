@@ -16,7 +16,8 @@ from comune import (IS_WINDOWS, BG_PROCESS, BASE_DIR, CONFIG_FILE, STATS_FILE, I
                     current_index, load_config, save_config, unsplash_key, pixabay_key, autostart_enabled, set_autostart,
                     shortcut_exists, set_shortcuts, open_path, is_install_dir, uninstall, local_version,
                     check_update, apply_update, find_old_install, import_old_install, LINGUE, language,
-                    set_language, system_language, tr)
+                    set_language, system_language, tr, cycle_enabled, set_cycle, start_cycle, MIN_CYCLE_MINUTES,
+                    LAST_CHANGE_FILE)
 
 FONT = ("Segoe UI", 9)
 
@@ -137,7 +138,8 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
         if v_lang.get() == language():
             return
         set_language(v_lang.get())
-        current = {"auto": v_auto.get(), "menu": v_menu.get(), "desk": v_desk.get(),
+        current = {"auto": v_auto.get(), "cycle": v_cycle.get(), "cycle_min": entry_cycle.get(),
+                   "menu": v_menu.get(), "desk": v_desk.get(),
                    "key": entry_key.get(), "pixabay": entry_pixabay.get(), "accent": v_accent.get()}
         # Dopo il clic: il pulsante premuto viene distrutto insieme al resto della finestra
         def redo():
@@ -159,8 +161,19 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
     v_menu = tk.BooleanVar(win, initial("menu", lambda: first_install or shortcut_exists("menu")))
     v_desk = tk.BooleanVar(win, initial("desk", lambda: first_install or shortcut_exists("desktop")))
     menu_name = tr("menu Start") if IS_WINDOWS else tr("menu delle applicazioni")
-    for text, var in ((tr("Cambia sfondo a ogni accesso"), v_auto),
-                      (tr("Collegamento a questa finestra nel {menu}", menu=menu_name), v_menu),
+    tk.Checkbutton(f, text=tr("Cambia sfondo a ogni accesso"), variable=v_auto, font=FONT).pack(anchor=tk.W)
+    # Cambio automatico: la casella dice se c'e' la sua voce di avvio, i minuti stanno nel config
+    v_cycle = tk.BooleanVar(win, initial("cycle", cycle_enabled))
+    row = tk.Frame(f)
+    row.pack(anchor=tk.W)
+    tk.Checkbutton(row, text=tr("Cambia sfondo da solo ogni"), variable=v_cycle, font=FONT).pack(side=tk.LEFT)
+    entry_cycle = tk.Entry(row, width=5, font=FONT, justify=tk.RIGHT)
+    entry_cycle.insert(0, initial("cycle_min", lambda: str(cfg.get("cambio_automatico_minuti", ""))))
+    entry_cycle.pack(side=tk.LEFT)
+    tk.Label(row, text=tr("minuti"), font=FONT).pack(side=tk.LEFT, padx=(4, 0))
+    tk.Label(f, text=tr("Almeno {n} minuti; aspetta se il PC è bloccato o inattivo", n=MIN_CYCLE_MINUTES),
+             fg="gray", font=("Segoe UI", 8)).pack(anchor=tk.W, padx=(22, 0))
+    for text, var in ((tr("Collegamento a questa finestra nel {menu}", menu=menu_name), v_menu),
                       (tr("Collegamento a questa finestra sul desktop"), v_desk)):
         tk.Checkbutton(f, text=text, variable=var, font=FONT).pack(anchor=tk.W)
 
@@ -240,6 +253,16 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
     def save():
         # Su Windows ogni collegamento passa da PowerShell e ci mette qualche secondo: il lavoro va in un thread,
         # intanto la finestra dice cosa sta facendo e non accetta altri clic
+        cycle = v_cycle.get()
+        try: minutes = int(entry_cycle.get().strip())
+        except ValueError: minutes = 0
+        if minutes < MIN_CYCLE_MINUTES:
+            if cycle:
+                messagebox.showwarning(tr("Impostazioni"), tr("Inserisci un numero intero di minuti, almeno {n}.",
+                                                              n=MIN_CYCLE_MINUTES), parent=win)
+                return
+            # Cambio automatico spento: un valore non valido non sostituisce quello salvato
+            minutes = None
         key, accent, auto = entry_key.get().strip() or UNSPLASH_KEY_PLACEHOLDER, v_accent.get(), v_auto.get()
         pixabay = entry_pixabay.get().strip()
         lang = v_lang.get()
@@ -259,8 +282,14 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
             new_cfg["PIXABAY_API_KEY"] = pixabay
             new_cfg["lingua"] = lang
             new_cfg["colore_accento"] = accent
+            if minutes:
+                new_cfg["cambio_automatico_minuti"] = minutes
             # Tutto viene riscritto anche se non e' cambiato: cosi' i collegamenti puntano sempre a questa cartella
-            done = {"config.json": save_config(new_cfg), tr("avvio automatico"): set_autostart(auto)}
+            done = {"config.json": save_config(new_cfg), tr("avvio automatico"): set_autostart(auto),
+                    tr("cambio automatico"): set_cycle(cycle)}
+            if cycle:
+                # Parte subito, senza aspettare l'accesso successivo
+                start_cycle()
             links = set_shortcuts(shortcuts)
             done[tr("collegamento nel {menu}", menu=menu_name)] = links["menu"]
             done[tr("collegamento sul desktop")] = links["desktop"]
@@ -452,9 +481,16 @@ def main():
             btn.config(state=tk.DISABLED)
         lbl_status.config(text=status_msg, fg="blue")
 
+    def change_time():
+        try: return LAST_CHANGE_FILE.stat().st_mtime
+        except OSError: return 0
+
+    last_change = 0
+
     def refresh_ui(status_msg="", color="green"):
-        nonlocal info
+        nonlocal info, last_change
         info = get_current_wallpaper_info()
+        last_change = change_time()
         
         display_title = info["title"]
         if len(display_title) > 60:
@@ -709,7 +745,14 @@ def main():
     btn_prev.config(command=lambda: cycle_wallpaper(-1))
     btn_next.config(command=lambda: cycle_wallpaper(1))
 
+    def watch_changes():
+        # Lo sfondo cambiato dal cambio automatico compare anche qui, ma non durante un'operazione della finestra
+        if change_time() != last_change and btn_settings["state"] == tk.NORMAL:
+            refresh_ui()
+        root.after(5000, watch_changes)
+
     refresh_ui()
+    root.after(5000, watch_changes)
 
     if not IS_WINDOWS:
         # Su Linux Segoe UI manca e il font sostitutivo e' piu' largo: la misura fissa tagliava

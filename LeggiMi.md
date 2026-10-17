@@ -9,7 +9,8 @@ Cambia-sfondo automatico per Windows 10/11 e Linux (GNOME, KDE Plasma, XFCE, Cin
 * **Ridimensionamento intelligente:** riempie lo schermo con un "Ambient Blur" in stile cinematografico, mantenendo le proporzioni originali senza ritagliare. La modalità di adattamento dello sfondo viene impostata da sola.
 * **Colore d'accento:** prende il colore dominante dello sfondo e lo applica all'interfaccia di Windows (compatibile con il tema scuro). Si può disattivare nelle impostazioni.
 * **Più fonti:** alterna NASA APOD (la foto del giorno diventa sfondo al primo cambio in cui è disponibile, poi l'archivio dal 1995), NASA Image Library (senza le foto di eventi e conferenze), le foto della settimana e del mese di ESA Hubble e Webb, la foto del giorno di Wikimedia Commons, l'immagine del giorno di Bing, Unsplash e Pixabay (natura/spazio).
-* **Finestra delle impostazioni:** lingua, avvio automatico, collegamenti, chiavi Unsplash e Pixabay, cartelle, aggiornamenti e disinstallazione, tutto in un posto.
+* **Cambio automatico:** se vuoi, lo sfondo cambia da solo ogni N minuti (almeno 15). Aspetta mentre il PC è bloccato o inattivo, così non scarica immagini che nessuno vede. Un cambio dura circa 2 secondi, un terzo di secondo di CPU e 1–2 MB di download: anche ogni 15 minuti il consumo in più resta sotto un centesimo di watt.
+* **Finestra delle impostazioni:** lingua, avvio automatico, cambio automatico, collegamenti, chiavi Unsplash e Pixabay, cartelle, aggiornamenti e disinstallazione, tutto in un posto.
 * **Italiano e inglese:** la lingua segue quella del sistema e si può cambiare all'installazione o nelle impostazioni.
 * **Avviso di aggiornamento:** la finestra avvisa quando su GitHub c'è una versione nuova e si aggiorna con un clic.
 * **Cambio istantaneo:** dopo ogni cambio, lo sfondo successivo viene scaricato e preparato in background (`apod_images/prossimo/`), quindi il cambio seguente è quasi immediato.
@@ -27,9 +28,10 @@ irm https://raw.githubusercontent.com/francescodrnz/APOD_wallpaper/master/instal
 curl -fsSL https://raw.githubusercontent.com/francescodrnz/APOD_wallpaper/master/installa.sh | sh
 ```
 
-L'installer scarica il programma, installa quello che manca e apre la finestra di installazione. Scegli cosa vuoi (all'inizio è tutto selezionato) e premi **Installa**:
+L'installer scarica il programma, installa quello che manca e apre la finestra di installazione. Scegli cosa vuoi (all'inizio è tutto selezionato, tranne il cambio automatico) e premi **Installa**:
 * lingua (italiano o inglese; la finestra cambia subito);
 * cambio dello sfondo a ogni accesso;
+* cambio automatico dello sfondo ogni N minuti;
 * collegamento alla finestra di valutazione nel menu Start / menu delle applicazioni;
 * collegamento sul desktop;
 * chiavi Unsplash e Pixabay (facoltative).
@@ -40,7 +42,7 @@ Il programma sta in `%LOCALAPPDATA%\APOD_wallpaper` (Windows) o `~/.local/share/
 
 **Aggiornare:** quando c'è una versione nuova la finestra di valutazione mostra una banda gialla con il pulsante **Aggiorna**. Puoi anche controllare dalle impostazioni, o semplicemente rilanciare la riga di installazione. Impostazioni, statistiche e immagini restano.
 
-**Disinstallare:** **⚙️ Impostazioni → Disinstalla**. Toglie avvio automatico e collegamenti e, se vuoi, la cartella del programma.
+**Disinstallare:** **⚙️ Impostazioni → Disinstalla**. Toglie avvio automatico, cambio automatico e collegamenti e, se vuoi, la cartella del programma.
 
 **Arrivi da un vecchio clone git?** Lancia la riga di installazione: l'installer prende il posto del clone. Se il clone partiva all'accesso o da un collegamento, come dicevano le vecchie istruzioni, l'installer lo trova e porta qui chiave Unsplash, categorie e statistiche (la finestra di installazione dice da dove le ha prese). Altrimenti, dopo l'installazione, copia `config.json` e `statistiche.json` dal clone nella nuova cartella. Il vecchio avvio automatico e il vecchio collegamento `Cambia sfondo` vengono sostituiti, così lo sfondo non cambia due volte all'accesso. Poi puoi cancellare il clone.
 
@@ -70,6 +72,7 @@ Il supporto a KDE Plasma e XFCE non è ancora stato provato su un sistema vero: 
 
 Differenze rispetto a Windows:
 * Il colore d'accento non viene cambiato (su Linux dipende dal tema del desktop).
+* Il cambio automatico riconosce il PC inattivo su X11 e su GNOME con Wayland. Negli altri desktop Wayland non può saperlo: si ferma solo a schermo bloccato, se il desktop lo segnala.
 * Il Python di sistema non permette `pip install`, quindi l'installer prende le dipendenze dalla distribuzione (apt, dnf, pacman o zypper) e chiede la password una volta.
 
 ## Installazione manuale (git)

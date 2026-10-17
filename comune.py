@@ -45,6 +45,8 @@ BASE_DIR = Path(__file__).parent
 CONFIG_FILE = BASE_DIR / "config.json"
 STATS_FILE = BASE_DIR / "statistiche.json"
 IMAGES_DIR = BASE_DIR / "apod_images"
+# La mtime dice quando e' stato cambiato lo sfondo l'ultima volta (fuori dai glob wallpaper_*)
+LAST_CHANGE_FILE = IMAGES_DIR / "ultimo_cambio"
 APOD_SCRIPT = BASE_DIR / "apod.pyw"
 UI_SCRIPT = BASE_DIR / "cambia_sfondo.pyw"
 ICON_PNG = BASE_DIR / "icona.png"
@@ -78,6 +80,7 @@ DEFAULT_CONFIG = {
     "PIXABAY_API_KEY": "",
     "lingua": system_language(),
     "colore_accento": True,
+    "cambio_automatico_minuti": 60,
     "unsplash_categories": [
         "nature", "landscape", "space", "mountain", "ocean", "sky", "forest", "desert", "aurora", "milkyway",
         "astrophotography", "stars", "night sky", "cosmos", "observatory", "telescope",
@@ -312,6 +315,16 @@ def get_current_wallpaper():
         return None
 
 def set_wallpaper(path):
+    # Annota il momento del cambio: il cambio automatico conta il tempo da qui, anche dopo un cambio a mano
+    ok = _set_wallpaper(path)
+    if ok:
+        try:
+            IMAGES_DIR.mkdir(exist_ok=True)
+            LAST_CHANGE_FILE.touch()
+        except OSError: pass
+    return ok
+
+def _set_wallpaper(path):
     if not IS_WINDOWS:
         # absolute() e non resolve(): il percorso deve restare confrontabile con IMAGES_DIR
         try: return _linux_set_wallpaper(Path(path).absolute())
@@ -449,6 +462,12 @@ def current_index(files, curr):
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "APOD_wallpaper"
 AUTOSTART_FILE = XDG_CONFIG / "autostart" / "apod.desktop"
+CYCLE_RUN_VALUE = "APOD_wallpaper_ciclo"
+CYCLE_FILE = XDG_CONFIG / "autostart" / "apod_ciclo.desktop"
+# Tenuto bloccato dal processo del cambio automatico, cosi' non ne girano due insieme
+CYCLE_LOCK = IMAGES_DIR / "ciclo.lock"
+# Sotto questa soglia la chiave demo di Unsplash (50 richieste all'ora) rischia di esaurirsi
+MIN_CYCLE_MINUTES = 15
 
 def pythonw_path():
     # Su Windows gli script vanno lanciati con pythonw, che non apre la console
@@ -497,39 +516,146 @@ def _write_desktop_file(path, name, comment, args, extra=()):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-def autostart_enabled():
+def _run_entry_exists(value, desktop_file):
     if not IS_WINDOWS:
-        return AUTOSTART_FILE.exists()
+        return desktop_file.exists()
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
-            winreg.QueryValueEx(key, RUN_VALUE)
+            winreg.QueryValueEx(key, value)
         return True
     except OSError:
-        return bool(_legacy_startup_links())
+        return False
 
-def set_autostart(on):
-    # Cambia sfondo a ogni accesso. Restituisce False se non e' stato possibile.
+def _set_run_entry(value, desktop_file, comment, on, args=(), delay=0):
+    # Voce di avvio automatico che lancia apod.pyw con args (delay: secondi di attesa, solo su Linux).
+    # Restituisce False se non e' stato possibile.
     if not IS_WINDOWS:
         try:
             if on:
-                # Il ritardo da' tempo alla rete di collegarsi dopo l'accesso
-                cmd = f"sleep 15 && exec {shlex.quote(str(sys.executable))} {shlex.quote(str(APOD_SCRIPT))}"
-                _write_desktop_file(AUTOSTART_FILE, "APOD Wallpaper", tr("Cambia lo sfondo all'accesso"),
-                                    ["sh", "-c", cmd], ["X-GNOME-Autostart-enabled=true"])
+                cmd = [sys.executable, APOD_SCRIPT, *args]
+                if delay:
+                    cmd = ["sh", "-c", f"sleep {delay} && exec " + " ".join(shlex.quote(str(a)) for a in cmd)]
+                _write_desktop_file(desktop_file, "APOD Wallpaper", comment, cmd, ["X-GNOME-Autostart-enabled=true"])
             else:
-                AUTOSTART_FILE.unlink(missing_ok=True)
+                desktop_file.unlink(missing_ok=True)
             return True
         except: return False
     try:
-        for lnk in _legacy_startup_links():
-            lnk.unlink(missing_ok=True)
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
             if on:
-                winreg.SetValueEx(key, RUN_VALUE, 0, winreg.REG_SZ, f'"{pythonw_path()}" "{APOD_SCRIPT}"')
+                winreg.SetValueEx(key, value, 0, winreg.REG_SZ, " ".join([f'"{pythonw_path()}" "{APOD_SCRIPT}"', *args]))
             else:
-                try: winreg.DeleteValue(key, RUN_VALUE)
+                try: winreg.DeleteValue(key, value)
                 except FileNotFoundError: pass
         return True
+    except: return False
+
+def autostart_enabled():
+    return _run_entry_exists(RUN_VALUE, AUTOSTART_FILE) or (IS_WINDOWS and bool(_legacy_startup_links()))
+
+def set_autostart(on):
+    # Cambia sfondo a ogni accesso. Restituisce False se non e' stato possibile.
+    if IS_WINDOWS:
+        try:
+            for lnk in _legacy_startup_links():
+                lnk.unlink(missing_ok=True)
+        except: return False
+    # Su Linux il ritardo da' tempo alla rete di collegarsi dopo l'accesso
+    return _set_run_entry(RUN_VALUE, AUTOSTART_FILE, tr("Cambia lo sfondo all'accesso"), on, delay=15)
+
+def cycle_enabled():
+    return _run_entry_exists(CYCLE_RUN_VALUE, CYCLE_FILE)
+
+def set_cycle(on):
+    # Cambio automatico ogni N minuti: un processo apod.pyw --ciclo che parte all'accesso e controlla di continuo
+    # che questa voce esista ancora, quindi toglierla basta a fermarlo
+    return _set_run_entry(CYCLE_RUN_VALUE, CYCLE_FILE, tr("Cambia lo sfondo da solo a intervalli regolari"), on, ["--ciclo"])
+
+def start_cycle():
+    # Avvia subito il ciclo, senza aspettare l'accesso successivo; se ce n'e' gia' uno, il nuovo esce da solo
+    try:
+        subprocess.Popen([str(pythonw_path()), str(APOD_SCRIPT), "--ciclo"], **BG_PROCESS)
+        return True
+    except: return False
+
+# --- INATTIVITA' ---
+# Il cambio automatico aspetta che l'utente torni: con lo schermo bloccato o senza input da questi minuti
+IDLE_MINUTES = 10
+SCREENSAVERS = (("org.cinnamon.ScreenSaver", "/org/cinnamon/ScreenSaver"),
+                ("org.gnome.ScreenSaver", "/org/gnome/ScreenSaver"),
+                ("org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver"))
+
+def _gdbus(dest, path, method):
+    return _run(["gdbus", "call", "--session", "--dest", dest, "--object-path", path, "--method", method], timeout=5).stdout
+
+def _x11_idle_seconds():
+    class XScreenSaverInfo(ctypes.Structure):
+        _fields_ = [("window", ctypes.c_ulong), ("state", ctypes.c_int), ("kind", ctypes.c_int),
+                    ("til_or_since", ctypes.c_ulong), ("idle", ctypes.c_ulong), ("event_mask", ctypes.c_ulong)]
+    x11, xss = ctypes.CDLL("libX11.so.6"), ctypes.CDLL("libXss.so.1")
+    x11.XOpenDisplay.restype = ctypes.c_void_p
+    x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    x11.XDefaultRootWindow.restype = ctypes.c_ulong
+    x11.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+    x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+    xss.XScreenSaverQueryInfo.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(XScreenSaverInfo)]
+    display = x11.XOpenDisplay(None)
+    if not display:
+        return None
+    try:
+        info = XScreenSaverInfo()
+        if not xss.XScreenSaverQueryInfo(display, x11.XDefaultRootWindow(display), ctypes.byref(info)):
+            return None
+        return info.idle / 1000
+    finally:
+        x11.XCloseDisplay(display)
+
+def user_idle_seconds():
+    # Secondi dall'ultimo input di tastiera o mouse, oppure None se non si puo' sapere
+    if not IS_WINDOWS:
+        try:
+            if os.environ.get("XDG_SESSION_TYPE") == "wayland":
+                # XWayland vede solo l'input delle finestre X11: su Wayland risponde solo GNOME (Mutter)
+                out = _gdbus("org.gnome.Mutter.IdleMonitor", "/org/gnome/Mutter/IdleMonitor/Core",
+                             "org.gnome.Mutter.IdleMonitor.GetIdletime")
+                m = re.search(r"\d+", out)
+                return int(m.group()) / 1000 if m else None
+            return _x11_idle_seconds() if os.environ.get("DISPLAY") else None
+        except: return None
+    try:
+        class LASTINPUTINFO(ctypes.Structure):
+            _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+        info = LASTINPUTINFO(ctypes.sizeof(LASTINPUTINFO))
+        if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)):
+            return None
+        # Contatori a 32 bit in millisecondi: la maschera tiene conto del giro dopo circa 49 giorni
+        return ((ctypes.windll.kernel32.GetTickCount() - info.dwTime) & 0xFFFFFFFF) / 1000
+    except: return None
+
+def screen_locked():
+    # Su Windows basta l'inattivita': a schermo bloccato non arriva input e il contatore cresce
+    if IS_WINDOWS:
+        return False
+    session = os.environ.get("XDG_SESSION_ID")
+    if session:
+        try:
+            if _run(["loginctl", "show-session", session, "-p", "LockedHint", "--value"], timeout=5).stdout.strip() == "yes":
+                return True
+        except: pass
+    for dest, path in SCREENSAVERS:
+        try:
+            if "true" in _gdbus(dest, path, f"{dest}.GetActive"):
+                return True
+        except: pass
+    return False
+
+def user_inactive():
+    # Se non si puo' sapere, l'utente conta come presente e lo sfondo cambia
+    try:
+        if screen_locked():
+            return True
+        idle = user_idle_seconds()
+        return idle is not None and idle >= IDLE_MINUTES * 60
     except: return False
 
 def shortcut_path(where, lingua=None):
@@ -677,7 +803,9 @@ def import_old_install(folder):
 
 def uninstall(delete_folder=False):
     # Toglie avvio automatico e collegamenti; la cartella si cancella solo se e' quella degli installer
+    # Senza la sua voce di avvio il cambio automatico esce entro un controllo e lascia libera la cartella
     ok = set_autostart(False)
+    ok = set_cycle(False) and ok
     ok = all(set_shortcuts({"menu": False, "desktop": False}).values()) and ok
     if delete_folder and is_install_dir():
         if IS_WINDOWS:

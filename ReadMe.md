@@ -9,7 +9,8 @@ Automated wallpaper switcher for Windows 10/11 and Linux (GNOME, KDE Plasma, XFC
 * **Smart Resize:** Automatically applies a cinematic "Ambient Blur" to fill the screen, preserving the original aspect ratio without cropping. The wallpaper fit mode is set automatically.
 * **DWM Color Sync:** Extracts the dominant color from the wallpaper and applies it to the Windows interface (Dark Mode safe). Can be turned off in the settings.
 * **Multi-Source:** Cycles through NASA APOD (the picture of the day becomes your wallpaper at the first change after it is out, then the archive since 1995), NASA Library (without event and conference photos), ESA Hubble and Webb pictures of the week/month, the Wikimedia Commons picture of the day, the Bing image of the day, Unsplash and Pixabay (Nature/Space).
-* **Settings Window:** language, auto-start, shortcuts, Unsplash and Pixabay keys, folders, updates and uninstall, all in one place.
+* **Automatic Change:** optionally, the wallpaper changes on its own every N minutes (at least 15). It waits while the PC is locked or idle, so it does not download images nobody sees. A change takes about 2 seconds, a third of a second of CPU and 1–2 MB of download: even every 15 minutes the extra power draw stays below a hundredth of a watt.
+* **Settings Window:** language, auto-start, automatic change, shortcuts, Unsplash and Pixabay keys, folders, updates and uninstall, all in one place.
 * **English and Italian:** the language follows the system and can be changed at install time or in the settings.
 * **Update Notice:** the window tells you when a new version is on GitHub and updates with one click.
 * **Instant Change:** After each change, the next wallpaper is downloaded and prepared in the background (`apod_images/prossimo/`), so the next change is almost instant.
@@ -27,9 +28,10 @@ irm https://raw.githubusercontent.com/francescodrnz/APOD_wallpaper/master/instal
 curl -fsSL https://raw.githubusercontent.com/francescodrnz/APOD_wallpaper/master/installa.sh | sh
 ```
 
-The installer downloads the program, installs what is missing and opens the setup window. Pick what you want (all on by default) and press **Install**:
+The installer downloads the program, installs what is missing and opens the setup window. Pick what you want (all on by default, except the automatic change) and press **Install**:
 * language (English or Italian; the window switches right away);
 * change wallpaper at every login;
+* change wallpaper on its own every N minutes;
 * shortcut to the rating window in the Start menu / applications menu;
 * shortcut on the desktop;
 * Unsplash and Pixabay keys (optional).
@@ -40,7 +42,7 @@ The program lives in `%LOCALAPPDATA%\APOD_wallpaper` (Windows) or `~/.local/shar
 
 **Updating:** when a new version is available the rating window shows a yellow bar with an **Update** button. You can also check from the settings, or simply run the install line again. Your settings, statistics and images are kept.
 
-**Uninstalling:** **⚙️ Settings → Uninstall**. It removes auto-start and shortcuts, and optionally the program folder.
+**Uninstalling:** **⚙️ Settings → Uninstall**. It removes auto-start, the automatic change and shortcuts, and optionally the program folder.
 
 **Coming from an older git clone?** Just run the install line: the installer replaces the clone. If the clone was started at login or from a shortcut, as the old instructions said, the installer finds it and brings over your Unsplash key, categories and statistics (the setup window shows where it took them from). Otherwise copy `config.json` and `statistiche.json` from the clone into the new folder after installing. The old auto-start and the old `Cambia sfondo` shortcut are replaced, so the wallpaper does not change twice at login. You can then delete the clone.
 
@@ -70,6 +72,7 @@ KDE Plasma and XFCE support has not been tested on a real system yet: if it does
 
 Differences from Windows:
 * The accent color is not changed (on Linux it depends on the desktop theme).
+* The automatic change detects an idle PC on X11 and on GNOME under Wayland. On other Wayland desktops it cannot tell: it only pauses while the screen is locked, if the desktop reports it.
 * The system Python does not allow `pip install`, so the installer gets the dependencies from the distribution (apt, dnf, pacman or zypper) and asks for your password once.
 
 ## Manual Installation (git)

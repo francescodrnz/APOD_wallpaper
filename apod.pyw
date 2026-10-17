@@ -14,7 +14,8 @@ from pathlib import Path
 # comune installa requests e pillow se mancano, quindi va importato prima di loro
 from comune import (IS_WINDOWS, BG_PROCESS, IMAGES_DIR, get_current_wallpaper, set_wallpaper,
                     update_windows_accent, load_stats, is_excluded, write_info, read_info, load_config, unsplash_key, tr,
-                    pixabay_key, language, REPO)
+                    pixabay_key, language, REPO, read_config, DEFAULT_CONFIG, LAST_CHANGE_FILE, CYCLE_LOCK,
+                    MIN_CYCLE_MINUTES, cycle_enabled, start_cycle, user_inactive, pythonw_path)
 
 import requests
 from PIL import Image, ImageFilter, ImageEnhance
@@ -536,6 +537,63 @@ def prefetch():
     if any(PREFETCH_DIR.glob("wallpaper_*.jpg")): return
     prepare_image(PREFETCH_DIR)
 
+# --- CAMBIO AUTOMATICO ---
+CYCLE_POLL = 15    # secondi tra un controllo e l'altro
+CYCLE_RETRY = 300  # dopo un cambio fallito (ad esempio senza rete) si riprova dopo questi secondi
+
+def _lock_cycle():
+    # Blocco esclusivo su CYCLE_LOCK, oppure None se lo tiene gia' un altro ciclo.
+    # Il sistema lo rilascia da solo quando il processo esce.
+    try:
+        IMAGES_DIR.mkdir(exist_ok=True)
+        f = open(CYCLE_LOCK, "a+")
+    except OSError:
+        return None
+    try:
+        if IS_WINDOWS:
+            import msvcrt
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return f
+    except OSError:
+        f.close()
+        return None
+
+def _scripts_mtime():
+    here = Path(os.path.abspath(__file__))
+    return max(_mtime(here), _mtime(here.with_name("comune.py")))
+
+def cycle():
+    # Cambia sfondo ogni N minuti dall'ultimo cambio, anche se fatto a mano, ma non mentre l'utente e' via.
+    # Il tempo si misura con l'orologio a ogni controllo: dopo una sospensione cambia una volta sola.
+    lock = _lock_cycle()
+    if not lock: return
+    start, scripts, last_try = time.time(), _scripts_mtime(), 0
+    while True:
+        time.sleep(CYCLE_POLL)
+        # Voce di avvio tolta dalle Impostazioni o dalla disinstallazione
+        if not cycle_enabled(): return
+        if _scripts_mtime() != scripts:
+            # Dopo un aggiornamento riparte con il codice nuovo
+            lock.close()
+            start_cycle()
+            return
+        try: minutes = int(read_config().get("cambio_automatico_minuti", DEFAULT_CONFIG["cambio_automatico_minuti"]))
+        except (TypeError, ValueError): minutes = DEFAULT_CONFIG["cambio_automatico_minuti"]
+        minutes = max(MIN_CYCLE_MINUTES, minutes)
+        now = time.time()
+        due = now - max(start, _mtime(LAST_CHANGE_FILE)) >= minutes * 60
+        # Un cambio fallito non tocca LAST_CHANGE_FILE: senza CYCLE_RETRY si riproverebbe a ogni controllo
+        if due and now - last_try >= CYCLE_RETRY and not user_inactive():
+            last_try = now
+            try:
+                subprocess.run([str(pythonw_path()), os.path.abspath(__file__)], cwd=str(IMAGES_DIR.parent),
+                               timeout=300, **BG_PROCESS)
+            except: pass
+
 def cleanup(folder, current, new_img, new_txt):
     keep = {new_img, new_txt}
     if current and current.parent == folder:
@@ -555,6 +613,9 @@ def main():
 
     if "--prefetch" in sys.argv:
         prefetch()
+        return
+    if "--ciclo" in sys.argv:
+        cycle()
         return
 
     current_wp = get_current_wallpaper()
