@@ -510,35 +510,48 @@ def shortcut_exists(where):
     try: return shortcut_path(where).exists()
     except: return False
 
-def set_shortcut(where, on):
-    # Crea (o ricrea, aggiornando i percorsi) oppure toglie il collegamento. False se non riesce.
-    try:
-        path = shortcut_path(where)
-        if not on:
-            path.unlink(missing_ok=True)
-            return True
-        if not path.parent.is_dir() and where == "desktop":
-            return False
-        if not IS_WINDOWS:
-            _write_desktop_file(path, "Cambia Sfondo", "Valuta e cambia lo sfondo",
-                                [sys.executable, UI_SCRIPT], ["Categories=Utility;"])
-            if where == "desktop":
-                # Sul desktop di GNOME l'icona si avvia solo se e' eseguibile e segnata come fidata
-                path.chmod(0o755)
-                try: _run(["gio", "set", str(path), "metadata::trusted", "true"])
-                except: pass
-            return True
-        # I file .lnk si creano solo via COM: lo fa PowerShell, con i valori passati
-        # nelle variabili d'ambiente per non doverli proteggere nella riga di comando
-        env = dict(os.environ, APOD_LNK=str(path), APOD_TARGET=str(pythonw_path()),
-                   APOD_ARGS=f'"{UI_SCRIPT}"', APOD_DIR=str(BASE_DIR), APOD_ICON=str(ICON_ICO))
-        script = ("$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:APOD_LNK); "
-                  "$s.TargetPath = $env:APOD_TARGET; $s.Arguments = $env:APOD_ARGS; "
-                  "$s.WorkingDirectory = $env:APOD_DIR; $s.IconLocation = $env:APOD_ICON; "
-                  "$s.Description = 'Valuta e cambia lo sfondo'; $s.Save()")
-        res = _run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], timeout=30, env=env)
-        return res.returncode == 0 and path.exists()
-    except: return False
+def set_shortcuts(choices):
+    # choices e' {where: on}: crea (o ricrea, aggiornando i percorsi) oppure toglie i collegamenti.
+    # Restituisce {where: riuscito}.
+    result, links = {}, []
+    for where, on in choices.items():
+        try:
+            path = shortcut_path(where)
+            if not on:
+                path.unlink(missing_ok=True)
+                result[where] = True
+            elif not path.parent.is_dir() and where == "desktop":
+                result[where] = False
+            elif IS_WINDOWS:
+                links.append((where, path))
+            else:
+                _write_desktop_file(path, "Cambia Sfondo", "Valuta e cambia lo sfondo",
+                                    [sys.executable, UI_SCRIPT], ["Categories=Utility;"])
+                if where == "desktop":
+                    # Sul desktop di GNOME l'icona si avvia solo se e' eseguibile e segnata come fidata
+                    path.chmod(0o755)
+                    try: _run(["gio", "set", str(path), "metadata::trusted", "true"])
+                    except: pass
+                result[where] = True
+        except: result[where] = False
+    if links:
+        # I file .lnk si creano solo via COM: lo fa PowerShell, con i valori passati nelle variabili
+        # d'ambiente per non doverli proteggere nella riga di comando. Avviarlo costa piu' di un secondo,
+        # quindi un solo PowerShell crea tutti i collegamenti (separati da |, che non puo' stare in un percorso)
+        try:
+            env = dict(os.environ, APOD_LNKS="|".join(str(path) for _, path in links), APOD_TARGET=str(pythonw_path()),
+                       APOD_ARGS=f'"{UI_SCRIPT}"', APOD_DIR=str(BASE_DIR), APOD_ICON=str(ICON_ICO))
+            script = ("foreach ($lnk in $env:APOD_LNKS.Split('|')) { "
+                      "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk); "
+                      "$s.TargetPath = $env:APOD_TARGET; $s.Arguments = $env:APOD_ARGS; "
+                      "$s.WorkingDirectory = $env:APOD_DIR; $s.IconLocation = $env:APOD_ICON; "
+                      "$s.Description = 'Valuta e cambia lo sfondo'; $s.Save() }")
+            res = _run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], timeout=30, env=env)
+            created = res.returncode == 0
+        except: created = False
+        for where, path in links:
+            result[where] = created and path.exists()
+    return result
 
 def is_install_dir():
     # True se il programma gira dalla cartella degli installer e non da un clone
@@ -548,8 +561,7 @@ def is_install_dir():
 def uninstall(delete_folder=False):
     # Toglie avvio automatico e collegamenti; la cartella si cancella solo se e' quella degli installer
     ok = set_autostart(False)
-    for where in ("menu", "desktop"):
-        ok = set_shortcut(where, False) and ok
+    ok = all(set_shortcuts({"menu": False, "desktop": False}).values()) and ok
     if delete_folder and is_install_dir():
         if IS_WINDOWS:
             # Il processo che chiama tiene occupata la cartella finche' non esce, anche dopo minuti se il messaggio

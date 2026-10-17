@@ -14,7 +14,7 @@ from comune import (IS_WINDOWS, BG_PROCESS, BASE_DIR, CONFIG_FILE, STATS_FILE, I
                     get_current_wallpaper, set_wallpaper,
                     update_windows_accent, load_stats, is_excluded, read_info, mark_rated, list_history,
                     current_index, load_config, save_config, unsplash_key, autostart_enabled, set_autostart,
-                    shortcut_exists, set_shortcut, open_path, is_install_dir, uninstall, local_version,
+                    shortcut_exists, set_shortcuts, open_path, is_install_dir, uninstall, local_version,
                     check_update, apply_update)
 
 FONT = ("Segoe UI", 9)
@@ -187,21 +187,35 @@ def build_settings(root, win, on_close, intro=None, first_install=False):
         btn_update.config(command=lambda: ask_and_update(root, win, found["update"], set_status))
 
     def save():
+        # Su Windows ogni collegamento passa da PowerShell e ci mette qualche secondo: il lavoro va in un thread,
+        # intanto la finestra dice cosa sta facendo e non accetta altri clic
+        key, accent, auto = entry_key.get().strip() or UNSPLASH_KEY_PLACEHOLDER, v_accent.get(), v_auto.get()
+        shortcuts = {"menu": v_menu.get(), "desktop": v_desk.get()}
+        for button in buttons:
+            button.config(state=tk.DISABLED)
+        lbl_saving.config(text="⏳ Salvataggio in corso...")
         win.config(cursor="watch")
-        win.update()
-        cfg = load_config()
-        cfg["UNSPLASH_API_KEY"] = entry_key.get().strip() or UNSPLASH_KEY_PLACEHOLDER
-        cfg["colore_accento"] = v_accent.get()
-        # Tutto viene riscritto anche se non e' cambiato: cosi' i collegamenti puntano sempre a questa cartella
-        failed = [name for name, ok in (
-            ("config.json", save_config(cfg)),
-            ("avvio automatico", set_autostart(v_auto.get())),
-            (f"collegamento nel {menu_name}", set_shortcut("menu", v_menu.get())),
-            ("collegamento sul desktop", set_shortcut("desktop", v_desk.get()))) if not ok]
-        win.config(cursor="")
-        if failed:
-            messagebox.showwarning("Impostazioni", "Non è stato possibile impostare: " + ", ".join(failed), parent=win)
-        on_close(True)
+        win.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        def work():
+            cfg = load_config()
+            cfg["UNSPLASH_API_KEY"] = key
+            cfg["colore_accento"] = accent
+            # Tutto viene riscritto anche se non e' cambiato: cosi' i collegamenti puntano sempre a questa cartella
+            done = {"config.json": save_config(cfg), "avvio automatico": set_autostart(auto)}
+            links = set_shortcuts(shortcuts)
+            done[f"collegamento nel {menu_name}"] = links["menu"]
+            done["collegamento sul desktop"] = links["desktop"]
+            return [name for name, ok in done.items() if not ok]
+
+        def saved(failed, error):
+            win.config(cursor="")
+            if error:
+                failed = ["impostazioni"]
+            if failed:
+                messagebox.showwarning("Impostazioni", "Non è stato possibile impostare: " + ", ".join(failed), parent=win)
+            on_close(True)
+        run_in_background(root, work, saved)
 
     def do_uninstall():
         if not messagebox.askyesno("Disinstalla", "Vuoi togliere l'avvio automatico e i collegamenti?", parent=win):
@@ -224,11 +238,17 @@ def build_settings(root, win, on_close, intro=None, first_install=False):
 
     bottom = tk.Frame(win, padx=12, pady=8)
     bottom.pack(fill=tk.X)
+    buttons = []
     if not install_mode:
-        tk.Button(bottom, text="🗑️ Disinstalla...", font=FONT, command=do_uninstall).pack(side=tk.LEFT)
-    tk.Button(bottom, text="Installa" if first_install else "Salva", font=FONT, width=12, bg="#e5ffe5",
-              command=save).pack(side=tk.RIGHT, padx=(4, 0))
-    tk.Button(bottom, text="Annulla", font=FONT, width=10, command=lambda: on_close(False)).pack(side=tk.RIGHT)
+        buttons.append(tk.Button(bottom, text="🗑️ Disinstalla...", font=FONT, command=do_uninstall))
+        buttons[-1].pack(side=tk.LEFT)
+    buttons.append(tk.Button(bottom, text="Installa" if first_install else "Salva", font=FONT, width=12, bg="#e5ffe5",
+                             command=save))
+    buttons[-1].pack(side=tk.RIGHT, padx=(4, 0))
+    buttons.append(tk.Button(bottom, text="Annulla", font=FONT, width=10, command=lambda: on_close(False)))
+    buttons[-1].pack(side=tk.RIGHT)
+    lbl_saving = tk.Label(bottom, text="", fg="blue", font=("Segoe UI", 9, "italic"))
+    lbl_saving.pack(side=tk.RIGHT, padx=4)
     win.protocol("WM_DELETE_WINDOW", lambda: on_close(False))
 
 def install():
@@ -251,6 +271,8 @@ def install():
     setup_window(root)
     root.title(title)
     root.resizable(False, False)
+    # La finestra principale, se e' aperta, sta sempre in primo piano e coprirebbe questa
+    root.attributes("-topmost", True)
 
     def close(saved):
         if saved and first_install:
