@@ -1,49 +1,47 @@
-# Seconda verifica su Windows del ramo `installazione-semplice`
+# Terza verifica su Windows del ramo `installazione-semplice`
 
-Istruzioni per la sessione su Windows. Il primo giro è in `docs/verifica-windows.md`. Nella sezione "Seguito", in fondo, c'è la tabella delle correzioni ai bug aperti, con quello che è già stato provato su Linux.
+Istruzioni per la sessione su Windows. I giri precedenti sono in `docs/verifica-windows.md`, i tuoi finding del secondo giro in `docs/da-windows.md`.
+
+## Risposte al secondo giro
+
+- **`center(settings_win)` in `open_settings`**: provato su Linux, OK. Le Impostazioni si aprono al centro (568x584 su 1920x1080, in 676,276), intere e modali (`grab_status() == "local"`).
+- **Bug 1, "Installa"/"Salva" senza riscontro**: corretto come proponevi.
+  - `save()` in `build_settings` legge i valori dei widget, disabilita i pulsanti, mostra "⏳ Salvataggio in corso..." accanto ad "Annulla", toglie la chiusura dalla X e fa il lavoro con `run_in_background`. Il callback mostra l'eventuale avviso e chiude.
+  - `set_shortcut(where, on)` è diventata `set_shortcuts({where: on})` in `comune.py`, che restituisce `{where: riuscito}`. Su Windows i `.lnk` da creare passano tutti per **un solo** PowerShell: i percorsi sono in `APOD_LNKS`, separati da `|`, e lo script fa `foreach`. Anche `uninstall` usa `set_shortcuts`.
+- **Bug 2, installer sotto la finestra principale**: decisione presa. La finestra principale resta `-topmost` e anche quella di installazione (`install()`) diventa `-topmost`.
+
+Su Linux ho provato tutto con `HOME` temporaneo e un ritardo finto di 3 s in `set_shortcuts`: messaggio e pulsanti disabilitati compaiono subito, la finestra si chiude a lavoro finito, i `.desktop` vengono creati e tolti. Il ramo Windows di `set_shortcuts` da qui non si può eseguire.
 
 ## Preparazione
 
-- Lavora sul ramo `installazione-semplice` (`git checkout installazione-semplice && git pull`). Servono almeno i commit `a7096a4` (correzioni dei bug aperti) e `934139c` (immagini in cache saltate).
-- Usa lo stesso metodo del primo giro:
-  - all'inizio, backup di registro, sfondo, colore d'accento e collegamenti;
-  - alla fine, ripristino completo, controllato con un nuovo `reg export`;
-  - per le cose visibili chiedi conferma all'utente.
-- Prova tutto su Windows PowerShell 5.1, il caso in cui si è rotto il controllo di Tk.
-- Usa l'installer del ramo: `$env:APOD_RAMO = 'installazione-semplice'` prima di `irm https://raw.githubusercontent.com/francescodrnz/APOD_wallpaper/installazione-semplice/installa.ps1 | iex`.
+- `git checkout installazione-semplice && git pull`. Serve il commit che contiene questo file.
+- Stesso metodo dei giri precedenti: backup all'inizio, ripristino completo alla fine controllato con `reg export`, conferma dell'utente per le cose visibili.
 
 ## Cosa verificare
 
-1. **Bug 4 e 5, `Find-Python`.**
-   - Controlla che venga scelto il primo Python con Tk. Per simulare un candidato senza Tk puoi sostituire `tkinter` con un modulo inesistente in una copia dello script.
-   - Se nessun candidato ha Tk, deve comparire l'avviso "Questo Python non ha Tk...", non "Python non trovato".
-   - Prova la riga `Sort-Object` su cartelle finte `Python39` e `Python313`: `Python313` deve venire prima.
-2. **Bug 7 e bug 2, finestra dopo l'installer.**
-   - Prima installazione: tutto come nel primo giro. Finestra "Installazione APOD Wallpaper", poi la finestra principale con il primo sfondo.
-   - Rilancio con la stessa versione: la finestra si chiama "APOD Wallpaper" e dice "già all'ultima versione". Con "Salva" **non** deve aprirsi una seconda finestra principale.
-   - Con lo sha di un commit vecchio in `versione.json`: la finestra dice "Aggiornamento completato".
-   - Con `$env:APOD_RAMO = 'ramo-che-non-esiste'`: deve comparire il messaggio giallo "Download non riuscito..." senza l'eccezione rossa di PowerShell, e la finestra deve restare aperta.
-3. **Bug 3, prima installazione annullata.** Senza `config.json`, premi "Annulla" nella finestra di installazione e rilancia l'installer. Deve essere ancora "Installazione APOD Wallpaper", con tutte le caselle selezionate. (Su Linux è già stato provato anche dal vero.)
-4. **Bug 1, messaggio della disinstallazione.**
-   - Fai "Impostazioni → Disinstalla" e chiedi di cancellare anche la cartella.
-   - Il messaggio "APOD Wallpaper è stato disinstallato." deve comparire in primo piano (ora usa `MessageBoxW`). **Chiedi all'utente di confermare che lo vede.**
-   - Dopo OK la cartella deve sparire.
-5. **Bug 6, `check_update()`.**
-   - Con lo sha di un commit vecchio deve restituire `commit` uguale alla punta del ramo e il campo `totale`.
-   - Il conteggio delle modifiche deve essere giusto nella banda "Aggiorna", nelle Impostazioni e nella finestra delle novità.
-6. **Immagini già in cache (`934139c`).** Dopo un cambio di sfondo con fonte APOD, l'immagine in `apod_images\prossimo` deve essere diversa da quella appena impostata: titolo e data nel `.txt` diversi.
+1. **`set_shortcuts` su Windows.**
+   - `set_shortcuts({"menu": True, "desktop": True})` deve restituire `{"menu": True, "desktop": True}` e creare i due `.lnk` con destinazione, argomenti, cartella di lavoro e icona come prima (controlla con `WScript.Shell`).
+   - Misura il tempo: deve essere circa la metà dei 3-4 s di prima.
+   - Off/on per ciascuno, anche misti (`{"menu": False, "desktop": True}`): il file sparisce e ricompare.
+   - Cartella Desktop inesistente (simulala in una copia, per esempio facendo restituire a `shortcut_path("desktop")` un percorso finto): `desktop` deve risultare `False`, e `menu` deve comunque essere creato.
+2. **"Installa" e "Salva".**
+   - Dalla finestra di installazione e dalle Impostazioni, alla pressione deve comparire subito "⏳ Salvataggio in corso...", con i pulsanti grigi. La finestra si chiude da sola a lavoro finito.
+   - Controlla che la scritta non tagli i pulsanti. Nelle Impostazioni la riga ha anche "Disinstalla...".
+   - **Chiedi all'utente di confermare che il riscontro si vede e che i tempi vanno bene.**
+3. **Installer sopra la finestra principale.** Apri la finestra principale, poi rilancia l'installer. La finestra "APOD Wallpaper" deve comparire sopra quella principale, e un eventuale avviso di "Salva" deve restare visibile. **Chiedi conferma all'utente.**
+4. **Disinstalla.** "Impostazioni → Disinstalla" deve togliere ancora entrambi i collegamenti e l'avvio automatico (ora passa da `set_shortcuts`).
 
 ## Alla fine
 
 - Correggi quello che trovi: commit in italiano, Conventional Commits, una riga.
-- In `docs/verifica-windows.md` aggiorna la sezione "Seguito": aggiungi l'esito su Windows di ogni riga e una riga per il punto 6.
+- In `docs/verifica-windows.md`, sezione "Seguito", aggiungi l'esito del terzo giro.
 - Fai commit e push sul ramo `installazione-semplice`. Poi riporta il PC allo stato di partenza.
 
 ## Comunicazione con la sessione su Linux
 
 Le due sessioni non si parlano direttamente: comunicano solo con file nella cartella `docs/` del ramo, che l'utente fa leggere all'altra dopo il pull. Non chiedere all'utente di copiare e incollare messaggi.
 
-- Scrivi i finding per la sessione Linux in `docs/da-windows.md`, con una sezione per ogni giro di verifica, datata e con il commit di partenza. Ci vanno:
+- Scrivi i finding per la sessione Linux in `docs/da-windows.md`, aggiungendo una sezione per questo giro, datata e con il commit di partenza. Ci vanno:
   - i bug trovati e non corretti, con passi per riprodurli e una proposta;
   - le decisioni da prendere;
   - le cose da provare su Linux;
