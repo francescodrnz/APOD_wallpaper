@@ -634,12 +634,14 @@ def find_old_install():
                 with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
                     texts.append(str(winreg.QueryValueEx(key, RUN_VALUE)[0]))
             except OSError: pass
-            # Esecuzione automatica, desktop e menu Start. Nei .lnk il percorso e' sia in UTF-16 sia nella codifica ANSI
-            for csidl in (0x0007, 0x0010, 0x0002):
-                for lnk in _windows_folder(csidl).glob("*.lnk"):
-                    data = lnk.read_bytes()
-                    texts += [data.decode("utf-16-le", "ignore"), data[1:].decode("utf-16-le", "ignore"),
-                              data.decode("mbcs", "ignore")]
+            # Esecuzione automatica, desktop e menu Start. La destinazione dei .lnk la legge WScript.Shell: nei byte
+            # il percorso locale puo' mancare (se C:\Users e' condivisa in rete c'e' solo \\PC\Users\... e uno relativo)
+            env = dict(os.environ, APOD_DIRS="|".join(str(_windows_folder(c)) for c in (0x0007, 0x0010, 0x0002)))
+            script = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; $sh = New-Object -ComObject WScript.Shell; "
+                      "foreach ($d in $env:APOD_DIRS.Split('|')) { foreach ($l in Get-ChildItem -LiteralPath $d -Filter *.lnk) { "
+                      "$s = $sh.CreateShortcut($l.FullName); $s.TargetPath + ' ' + $s.Arguments } }")
+            texts.append(_run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                              timeout=30, env=env, encoding="utf-8").stdout)
         else:
             for path in [*AUTOSTART_FILE.parent.glob("*.desktop"), shortcut_path("menu"), shortcut_path("desktop")]:
                 if path.is_file():
