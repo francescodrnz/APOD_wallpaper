@@ -53,7 +53,15 @@
             $python = Find-Python
         }
         if (-not $python) {
-            Write-Host 'Python non trovato. Installalo da https://www.python.org/downloads/ e rilancia questo comando.' -ForegroundColor Yellow
+            # Senza winget (o se non ci riesce) Python va scaricato a mano: si apre gia' la pagina giusta
+            $urlPython = 'https://www.python.org/downloads/'
+            Write-Host ''
+            Write-Host 'Python non trovato e non installabile in automatico. Installalo a mano:' -ForegroundColor Yellow
+            Write-Host "  1. Si apre la pagina $urlPython : premi il pulsante giallo `"Download Python`"." -ForegroundColor Yellow
+            Write-Host '  2. Apri il file scaricato e premi "Install Now".' -ForegroundColor Yellow
+            Write-Host '  3. Finita l''installazione, rilancia in questa finestra lo stesso comando di prima:' -ForegroundColor Yellow
+            Write-Host "     irm https://raw.githubusercontent.com/$repo/master/installa.ps1 | iex" -ForegroundColor Yellow
+            try { Start-Process $urlPython } catch { }
             return
         }
     }
@@ -102,7 +110,12 @@
     $tk = $LASTEXITCODE
     $ErrorActionPreference = 'Stop'
     if ($tk -ne 0) {
-        Write-Host 'Questo Python non ha Tk: reinstallalo da python.org lasciando selezionato "tcl/tk and IDLE".' -ForegroundColor Yellow
+        $urlPython = 'https://www.python.org/downloads/'
+        Write-Host ''
+        Write-Host "Questo Python non ha Tk, che serve alla finestra del programma. Si apre la pagina $urlPython :" -ForegroundColor Yellow
+        Write-Host '  scarica Python, nell''installazione scegli "Customize installation" e lascia selezionato "tcl/tk and IDLE",' -ForegroundColor Yellow
+        Write-Host "  poi rilancia: irm https://raw.githubusercontent.com/$repo/master/installa.ps1 | iex" -ForegroundColor Yellow
+        try { Start-Process $urlPython } catch { }
         return
     }
 

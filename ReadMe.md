@@ -56,7 +56,7 @@ Open **Cambia Sfondo** from the Start menu, the applications menu or the desktop
 ## Troubleshooting
 * **Windows Color is Blue/Default:** The script writes the full accent palette and turns off Windows' "Automatic" accent option, which falls back to blue on very dark images. If the image is near-black (e.g., deep space), the script uses a dark grey. Some apps only pick up the new color after a restart or a sign-out.
 * **Black Bars/Cropped Image:** the script sets the fit mode to **Fill** (Windows), **Zoom** (GNOME, Cinnamon, MATE, XFCE) or **Scaled and Cropped** (KDE) at every change. If you changed it by hand, the next wallpaper puts it back.
-* **The installer says Python is missing (Windows):** if `winget` is not available, install Python from [python.org](https://www.python.org/downloads/) and run the install line again.
+* **The installer says Python is missing (Windows):** when it cannot install Python by itself (no `winget`), it opens the [python.org download page](https://www.python.org/downloads/) and prints the steps: download, **Install Now**, then run the install line again.
 
 ## Linux
 Supported desktops: **GNOME** (Ubuntu, Fedora, Debian, Pop!_OS...), **KDE Plasma** (Kubuntu, Fedora KDE, openSUSE...), **XFCE** (Xubuntu, Linux Mint XFCE...), **Cinnamon** (Linux Mint), **MATE** and **Budgie**. On other environments (i3, Sway, Hyprland, LXQt...) the image is downloaded but the wallpaper is not changed.
