@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Note per agenti di coding che lavorano su questo repository. Per l'uso lato utente vedi `ReadMe.md`.
+Note per agenti di coding che lavorano su questo repository. Per l'uso lato utente vedi `ReadMe.md` (inglese) e `LeggiMi.md` (italiano).
 
 ## Cos'è
 
-Cambia-sfondo in Python per Windows 10/11 e Linux, installabile con una riga di comando e senza git. Scarica un'immagine da una fonte casuale (NASA APOD, NASA Image Library, Unsplash), la adatta allo schermo con un "ambient blur", la imposta come sfondo e, solo su Windows, sincronizza il colore d'accento. Gli stessi file girano su entrambi i sistemi e scelgono da soli il ramo giusto (vedi "Windows e Linux").
+Cambia-sfondo in Python per Windows 10/11 e Linux, installabile con una riga di comando e senza git. Scarica un'immagine da una fonte casuale (NASA APOD, NASA Image Library, Unsplash), la adatta allo schermo con un "ambient blur", la imposta come sfondo e, solo su Windows, sincronizza il colore d'accento. L'interfaccia è in italiano e in inglese. Gli stessi file girano su entrambi i sistemi e scelgono da soli il ramo giusto (vedi "Windows e Linux").
 
 ## File
 
@@ -12,13 +12,15 @@ Cambia-sfondo in Python per Windows 10/11 e Linux, installabile con una riga di 
 |---|---|
 | `apod.pyw` | Script headless: sceglie una fonte, scarica, ridimensiona, imposta lo sfondo, scrive i metadati, pulisce la cache e prepara in anticipo il prossimo sfondo. Pensato per l'avvio automatico al login. |
 | `cambia_sfondo.pyw` | Finestra Tkinter: mostra info sullo sfondo attuale, like/dislike, scorrimento avanti/indietro tra gli sfondi in cache, gestione categorie e statistiche, Impostazioni, banda di aggiornamento. Per cambiare sfondo lancia `apod.pyw` come sottoprocesso. Con `--installa` mostra solo le Impostazioni in modalità installazione (vedi "Installazione e aggiornamenti"). |
-| `comune.py` | Codice condiviso dai due script: rilevamento della piattaforma (`IS_WINDOWS`, `BG_PROCESS`), installazione delle dipendenze, percorsi, `config.json` (`load_config`, `read_config`, `save_config`), popup, lettura/impostazione dello sfondo, colore d'accento, statistiche e regola di esclusione, lettura/scrittura del `.txt`, storico, avvio automatico e collegamenti, disinstallazione, versione e aggiornamenti. Le funzioni usate da entrambi vanno qui, non duplicate. |
+| `comune.py` | Codice condiviso dai due script: rilevamento della piattaforma (`IS_WINDOWS`, `BG_PROCESS`), installazione delle dipendenze, percorsi, lingua (`tr`, vedi "Lingua"), `config.json` (`load_config`, `read_config`, `save_config`), popup, lettura/impostazione dello sfondo, colore d'accento, statistiche e regola di esclusione, lettura/scrittura del `.txt`, storico, avvio automatico e collegamenti, disinstallazione, versione e aggiornamenti. Le funzioni usate da entrambi vanno qui, non duplicate. |
+| `testi.py` | Solo la tabella `EN` delle traduzioni inglesi, con le frasi italiane come chiavi (vedi "Lingua"). |
 | `installa.ps1` / `installa.sh` | Installer da una riga (`irm ... \| iex` / `curl ... \| sh`): Python o dipendenze, download dell'archivio del commit da GitHub in `INSTALL_DIR`, `versione.json`, poi `cambia_sfondo.pyw --installa`. |
 | `icona.png` / `icona.ico` | Icona di finestre e collegamenti (`.png` per Tk e Linux, `.ico` per i `.lnk` di Windows). |
-| `config.json` | Chiave Unsplash (opzionale), `colore_accento` e liste di categorie. **Ignorato da git, contiene segreti: non committarlo e non riportarne il contenuto.** Viene generato in silenzio al primo avvio. |
+| `config.json` | Chiave Unsplash (opzionale), `lingua` (`it` / `en`), `colore_accento` e liste di categorie. **Ignorato da git, contiene segreti: non committarlo e non riportarne il contenuto.** Viene generato in silenzio al primo avvio. |
 | `versione.json` | `{commit, ramo, data}` della versione installata, scritto dagli installer e da `apply_update`. Ignorato da git; manca nei clone, dove la versione si legge da git. |
 | `statistiche.json` | Voti per categoria (`positivi` / `scarti`). Ignorato da git. |
 | `apod_images/` | Cache locale di immagini e metadati. Ignorata da git. |
+| `ReadMe.md` / `LeggiMi.md` | Istruzioni per l'utente in inglese e in italiano: vanno tenute allineate. |
 
 ## Flusso di `apod.pyw`
 
@@ -43,7 +45,7 @@ Prefetch: con `--prefetch` lo script prepara un'immagine in `apod_images/prossim
 | `show_popup` (`comune.py`) | `MessageBoxW` | `zenity`, con gli stessi codici di ritorno (6/7/1); se manca restituisce 7 = "No" |
 | `open_path` (cartelle) | `os.startfile` | `xdg-open` |
 | `autostart_enabled` / `set_autostart` | valore `APOD_wallpaper` in `HKCU\...\CurrentVersion\Run`; toglie anche i vecchi `.lnk` ad `apod.pyw` in Esecuzione automatica | `~/.config/autostart/apod.desktop` con `sleep 15` |
-| `shortcut_path` / `set_shortcuts` (`{"menu": on, "desktop": on}`) | `Cambia Sfondo.lnk` creato con PowerShell + `WScript.Shell`, un solo PowerShell per tutti i `.lnk` (valori passati nelle variabili d'ambiente). Il `.lnk` vecchio si toglie prima e l'esito è `path.exists()`, non il codice di uscita. `_unlink` riprova per circa 5 s su `PermissionError` (un collegamento appena usato dal menu Start resta aperto qualche istante) | `cambia_sfondo.desktop` in `~/.local/share/applications` e nella cartella di `xdg-user-dir DESKTOP` (eseguibile e `metadata::trusted`) |
+| `shortcut_path` / `set_shortcuts` (`{"menu": on, "desktop": on}`) | `Cambia Sfondo.lnk` o `Change Wallpaper.lnk` secondo la lingua (il nome del file è quello che si vede); `set_shortcuts` toglie sempre i collegamenti in tutte e due le lingue (`_shortcut_paths`) e `shortcut_exists` li cerca entrambi. Creato con PowerShell + `WScript.Shell`, un solo PowerShell per tutti i `.lnk` (valori passati nelle variabili d'ambiente). Il `.lnk` vecchio si toglie prima e l'esito è `path.exists()`, non il codice di uscita. `_unlink` riprova per circa 5 s su `PermissionError` (un collegamento appena usato dal menu Start resta aperto qualche istante) | `cambia_sfondo.desktop` (nome del file fisso, `Name=` tradotto) in `~/.local/share/applications` e nella cartella di `xdg-user-dir DESKTOP` (eseguibile e `metadata::trusted`) |
 | `uninstall` (cancellazione cartella) | PowerShell staccato: `Wait-Process` sul processo che chiama (che tiene la cartella come directory corrente), poi `Remove-Item` con qualche tentativo | `shutil.rmtree` |
 | `pythonw_path` | `pythonw.exe` accanto a `python.exe` | `sys.executable` |
 | `_run` | aggiunge `CREATE_NO_WINDOW`, altrimenti da `pythonw` ogni comando aprirebbe una console | `subprocess.run` |
@@ -57,6 +59,16 @@ Su Linux `_linux_desktop()` riconosce l'ambiente desktop da `XDG_CURRENT_DESKTOP
 - Altri ambienti: `get` restituisce `None`, `set` restituisce `False`.
 
 KDE e XFCE sono stati provati solo con comandi finti, non su un desktop vero. `set_wallpaper` usa `Path.absolute()` e non `resolve()`, così il percorso letto dal desktop resta confrontabile con `IMAGES_DIR` in `cleanup`. Sul Python di sistema di Linux `pip install` non è permesso (PEP 668), quindi `install_dependencies` fallisce in silenzio e le dipendenze vanno installate con il gestore di pacchetti della distribuzione (comandi nel ReadMe).
+
+## Lingua
+
+Le lingue sono `LINGUE = {"it": "Italiano", "en": "English"}` in `comune.py`. La lingua in uso si legge all'import di `comune` da `config.json` (`lingua`); se manca vale `system_language()`: italiano se il sistema è in italiano (Windows: `GetUserDefaultUILanguage`; Linux: il primo tra `LC_ALL`, `LC_MESSAGES`, `LANG`), altrimenti inglese. Gli installer usano lo stesso criterio per i loro messaggi nel terminale (`T` in `installa.ps1`, `msg` in `installa.sh`).
+
+- I testi si scrivono in italiano dentro `tr(...)`: `tr("Salva")`, `tr("Impossibile creare {file}", file=...)`. In inglese `tr` prende la traduzione da `EN` in `testi.py`, la cui chiave è la frase italiana esatta; se manca resta l'italiano. Ogni frase nuova o cambiata va aggiunta (o aggiornata) in `EN`, con gli stessi segnaposto. Non usare f-string dentro `tr`: le variabili vanno passate come argomenti.
+- `tr` va chiamata quando il testo serve, non a livello di modulo, perché la lingua può cambiare mentre la finestra è aperta.
+- Non si traducono il formato del `.txt` (`Title:`, `Valutato: Si`...), i nomi dei file, le categorie (sono parole di ricerca) né le novità degli aggiornamenti (sono i messaggi di commit).
+- Nelle Impostazioni e nella finestra di installazione la prima sezione è "🌐 Lingua / Language". Al cambio `set_language` vale subito e la finestra viene riempita di nuovo da `rebuild` (la funzione `fill` del chiamante), passando a `build_settings` le scelte già fatte in `values`. "Annulla" nelle Impostazioni rimette la lingua di prima; "Salva" la scrive nel config, riscrive i collegamenti con il nome nuovo e, se è cambiata, riapre la finestra principale con `restart_ui`.
+- Su Windows la finestra principale ha una misura fissa (340x350): i testi inglesi dei pulsanti vanno tenuti lunghi quanto quelli italiani.
 
 ## Contratto tra i due script
 
@@ -100,7 +112,7 @@ Il progetto deve funzionare anche senza nessuna chiave. Al primo avvio `load_con
 
 ## Convenzioni
 
-- Commenti, testi dell'interfaccia e messaggi di commit sono in italiano. I commit seguono Conventional Commits (`feat:`, `fix:`, `perf:`, `refactor:`, `docs:`), con una sola riga descrittiva in italiano.
+- Commenti e messaggi di commit sono in italiano. I testi dell'interfaccia si scrivono in italiano dentro `tr(...)` e hanno la traduzione inglese in `testi.py` (vedi "Lingua"). I commit seguono Conventional Commits (`feat:`, `fix:`, `perf:`, `refactor:`, `docs:`), con una sola riga descrittiva in italiano.
 - I `.pyw` girano senza console, quindi gli errori vengono ignorati di proposito (`except: return None` / `pass`) e ogni fonte fallisce in silenzio. Mantieni questo comportamento: un'eccezione non gestita non sarebbe visibile a nessuno. I popup (`show_popup`) servono solo per problemi di configurazione.
 - Dipendenze esterne: solo `requests` e `pillow`. Tutto il resto deve venire dalla libreria standard.
 
@@ -118,6 +130,8 @@ print(m.get_apod_data("2010-03-15"))  # data specifica
 img = m.fetch_image(m.get_apod_data()["url"], m.screen_size())
 print(m.smart_resize_wallpaper(img, m.screen_size()).size)
 ```
+
+Per controllare le traduzioni, confronta le stringhe passate a `tr(` nei tre file Python (con `ast`) con le chiavi di `EN`: non devono mancarne e non devono avanzarne. Per provare l'altra lingua senza toccare il config vero, usa una copia con `"lingua"` nel suo `config.json`, oppure `LANG=en_US.UTF-8` se il config non ha la chiave.
 
 Su Linux lancia gli script con `python3`. Per provare avvio automatico, collegamenti e installazione senza toccare il sistema, usa una copia degli script in una cartella temporanea e `HOME=$(mktemp -d)` (su X11 tieni `XAUTHORITY` puntato al file vero). La finestra si può controllare con `PIL.ImageGrab`. Per provare un ramo con l'installer: `APOD_RAMO=<ramo>` (`$env:APOD_RAMO` su Windows), dopo averlo pubblicato. Per provare l'aggiornamento, metti in `versione.json` lo sha di un commit vecchio.
 

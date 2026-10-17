@@ -11,6 +11,9 @@
     $repo = 'francescodrnz/APOD_wallpaper'
     $ramo = if ($env:APOD_RAMO) { $env:APOD_RAMO } else { 'master' }
     $dest = Join-Path $env:LOCALAPPDATA 'APOD_wallpaper'
+    # Messaggi in italiano se Windows e' in italiano, altrimenti in inglese (stesso criterio del programma)
+    $it = (Get-UICulture).TwoLetterISOLanguageName -eq 'it'
+    function T($testoIt, $testoEn) { if ($it) { $testoIt } else { $testoEn } }
 
     # Percorso di python.exe, oppure $null. Lo stub "python" di WindowsApps apre il Microsoft Store: si salta.
     # Preferisce un Python con Tk; se nessuno ce l'ha restituisce il primo che funziona, e l'avviso arriva dopo.
@@ -47,7 +50,7 @@
     $python = Find-Python
     if (-not $python) {
         if (Get-Command winget -ErrorAction SilentlyContinue) {
-            Write-Host 'Python non trovato: lo installo con winget (qualche minuto)...'
+            Write-Host (T 'Python non trovato: lo installo con winget (qualche minuto)...' 'Python not found: installing it with winget (a few minutes)...')
             winget install -e --id Python.Python.3.13 --scope user --silent --accept-package-agreements --accept-source-agreements
             $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine')
             $python = Find-Python
@@ -56,10 +59,10 @@
             # Senza winget (o se non ci riesce) Python va scaricato a mano: si apre gia' la pagina giusta
             $urlPython = 'https://www.python.org/downloads/'
             Write-Host ''
-            Write-Host 'Python non trovato e non installabile in automatico. Installalo a mano:' -ForegroundColor Yellow
-            Write-Host "  1. Si apre la pagina $urlPython : premi il pulsante giallo `"Download Python`"." -ForegroundColor Yellow
-            Write-Host '  2. Apri il file scaricato e premi "Install Now".' -ForegroundColor Yellow
-            Write-Host '  3. Finita l''installazione, rilancia in questa finestra lo stesso comando di prima:' -ForegroundColor Yellow
+            Write-Host (T 'Python non trovato e non installabile in automatico. Installalo a mano:' 'Python not found and it could not be installed automatically. Install it by hand:') -ForegroundColor Yellow
+            Write-Host (T "  1. Si apre la pagina $urlPython : premi il pulsante giallo `"Download Python`"." "  1. The page $urlPython opens: press the yellow `"Download Python`" button.") -ForegroundColor Yellow
+            Write-Host (T '  2. Apri il file scaricato e premi "Install Now".' '  2. Open the downloaded file and press "Install Now".') -ForegroundColor Yellow
+            Write-Host (T '  3. Finita l''installazione, rilancia in questa finestra lo stesso comando di prima:' '  3. When it is done, run the same command again in this window:') -ForegroundColor Yellow
             Write-Host "     irm https://raw.githubusercontent.com/$repo/master/installa.ps1 | iex" -ForegroundColor Yellow
             try { Start-Process $urlPython } catch { }
             return
@@ -74,7 +77,7 @@
         try { $precedente = "$((Get-Content $fileVersione -Raw | ConvertFrom-Json).commit)" } catch { }
     }
 
-    Write-Host "Scarico APOD Wallpaper (ramo $ramo)..."
+    Write-Host (T "Scarico APOD Wallpaper (ramo $ramo)..." "Downloading APOD Wallpaper (branch $ramo)...")
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('apod_' + [guid]::NewGuid())
     New-Item -ItemType Directory -Path $tmp | Out-Null
     try {
@@ -91,8 +94,8 @@
         # Solo i file della radice della repo
         Get-ChildItem $src.FullName -File -Force | Where-Object Name -ne '.gitignore' | Copy-Item -Destination $dest -Force
     } catch {
-        Write-Host "Download non riuscito: controlla la connessione e riprova (ramo $ramo)." -ForegroundColor Yellow
-        Write-Host "Dettagli: $($_.Exception.Message)" -ForegroundColor DarkGray
+        Write-Host (T "Download non riuscito: controlla la connessione e riprova (ramo $ramo)." "Download failed: check your connection and try again (branch $ramo).") -ForegroundColor Yellow
+        Write-Host ((T 'Dettagli: ' 'Details: ') + $_.Exception.Message) -ForegroundColor DarkGray
         return
     } finally {
         Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -101,9 +104,9 @@
     $versione = [ordered]@{ commit = $sha; ramo = $ramo; data = $data } | ConvertTo-Json
     [IO.File]::WriteAllText($fileVersione, $versione)
 
-    Write-Host 'Installo le dipendenze (requests, Pillow)...'
+    Write-Host (T 'Installo le dipendenze (requests, Pillow)...' 'Installing the dependencies (requests, Pillow)...')
     & $python -m pip install --user --disable-pip-version-check requests pillow
-    if ($LASTEXITCODE -ne 0) { Write-Host 'pip non e'' riuscito: ci riprovera'' il programma al primo avvio.' -ForegroundColor Yellow }
+    if ($LASTEXITCODE -ne 0) { Write-Host (T 'pip non e'' riuscito: ci riprovera'' il programma al primo avvio.' 'pip failed: the program will try again when it first starts.') -ForegroundColor Yellow }
     # Con 'Stop' PowerShell 5 trasformerebbe il traceback su stderr in un errore che interrompe lo script
     $ErrorActionPreference = 'Continue'
     & $python -c "import tkinter" 2>$null
@@ -112,16 +115,16 @@
     if ($tk -ne 0) {
         $urlPython = 'https://www.python.org/downloads/'
         Write-Host ''
-        Write-Host "Questo Python non ha Tk, che serve alla finestra del programma. Si apre la pagina $urlPython :" -ForegroundColor Yellow
-        Write-Host '  scarica Python, nell''installazione scegli "Customize installation" e lascia selezionato "tcl/tk and IDLE",' -ForegroundColor Yellow
-        Write-Host "  poi rilancia: irm https://raw.githubusercontent.com/$repo/master/installa.ps1 | iex" -ForegroundColor Yellow
+        Write-Host (T "Questo Python non ha Tk, che serve alla finestra del programma. Si apre la pagina $urlPython :" "This Python has no Tk, which the program window needs. The page $urlPython opens:") -ForegroundColor Yellow
+        Write-Host (T '  scarica Python, nell''installazione scegli "Customize installation" e lascia selezionato "tcl/tk and IDLE",' '  download Python, choose "Customize installation" in the installer and keep "tcl/tk and IDLE" selected,') -ForegroundColor Yellow
+        Write-Host (T "  poi rilancia: irm https://raw.githubusercontent.com/$repo/master/installa.ps1 | iex" "  then run again: irm https://raw.githubusercontent.com/$repo/master/installa.ps1 | iex") -ForegroundColor Yellow
         try { Start-Process $urlPython } catch { }
         return
     }
 
     $pythonw = Join-Path (Split-Path $python) 'pythonw.exe'
     if (-not (Test-Path $pythonw)) { $pythonw = $python }
-    Write-Host "Installato in $dest. Si apre la finestra delle impostazioni..."
+    Write-Host (T "Installato in $dest. Si apre la finestra delle impostazioni..." "Installed in $dest. Opening the settings window...")
     $uiArgs = @(('"' + (Join-Path $dest 'cambia_sfondo.pyw') + '"'), '--installa')
     if ($precedente) { $uiArgs += "--precedente=$precedente" }
     Start-Process -FilePath $pythonw -ArgumentList $uiArgs -WorkingDirectory $dest

@@ -38,6 +38,8 @@ install_dependencies()
 
 from PIL import Image
 
+from testi import EN
+
 # --- PERCORSI ---
 BASE_DIR = Path(__file__).parent
 CONFIG_FILE = BASE_DIR / "config.json"
@@ -57,10 +59,23 @@ if IS_WINDOWS:
 else:
     INSTALL_DIR = XDG_DATA / "apod_wallpaper"
 
+# --- LINGUA ---
+LINGUE = {"it": "Italiano", "en": "English"}
+
+def system_language():
+    # Italiano se il sistema e' in italiano, altrimenti inglese (stesso criterio degli installer)
+    try:
+        if IS_WINDOWS:
+            return "it" if ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF == 0x10 else "en"  # LANG_ITALIAN
+        locale = next((os.environ[v] for v in ("LC_ALL", "LC_MESSAGES", "LANG") if os.environ.get(v)), "")
+        return "it" if locale.lower().startswith("it") else "en"
+    except: return "en"
+
 # --- POPUP E CONFIGURAZIONE ---
 UNSPLASH_KEY_PLACEHOLDER = "your_unsplash_key_here"
 DEFAULT_CONFIG = {
     "UNSPLASH_API_KEY": UNSPLASH_KEY_PLACEHOLDER,
+    "lingua": system_language(),
     "colore_accento": True,
     "unsplash_categories": [
         "nature", "landscape", "space", "mountain", "ocean", "sky", "forest", "desert", "aurora", "milkyway",
@@ -105,19 +120,35 @@ def save_config(config):
         return True
     except: return False
 
+# Lingua dei testi: quella scelta nelle Impostazioni, o quella del sistema se non e' ancora stata scelta
+_lingua = read_config().get("lingua") or system_language()
+
+def language():
+    return _lingua
+
+def set_language(code):
+    global _lingua
+    _lingua = code if code in LINGUE else "en"
+
+def tr(text, **values):
+    # I testi si scrivono in italiano: in inglese si prende la traduzione da testi.py, se c'e'
+    if _lingua == "en":
+        text = EN.get(text, text)
+    return text.format(**values) if values else text
+
 def load_config():
     # Al primo avvio crea config.json in silenzio: la chiave Unsplash e' facoltativa
     # e si inserisce dalla finestra Impostazioni
     if not CONFIG_FILE.exists():
         if not save_config(DEFAULT_CONFIG):
-            show_popup("Errore Critico", f"Impossibile creare {CONFIG_FILE}", 0x10)
+            show_popup(tr("Errore Critico"), tr("Impossibile creare {file}", file=CONFIG_FILE), 0x10)
         return dict(DEFAULT_CONFIG)
 
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             config = json.load(f)
     except Exception as e:
-        show_popup("Errore Config", f"File config.json corrotto: {e}", 0x10)
+        show_popup(tr("Errore Config"), tr("File config.json corrotto: {errore}", errore=e), 0x10)
         return dict(DEFAULT_CONFIG)
 
     # Le chiavi aggiunte nelle versioni successive prendono il valore predefinito
@@ -369,7 +400,8 @@ def write_info(txt_path, img_data):
     txt_path.write_text(txt_content, encoding='utf-8')
 
 def read_info(txt_path):
-    info = {"title": "Sfondo Sconosciuto", "date": None, "source": "Sconosciuto", "category": None, "content": "Nessuna informazione disponibile per questo sfondo.", "cat_or_source": None, "rated": False}
+    info = {"title": tr("Sfondo Sconosciuto"), "date": None, "source": tr("Sconosciuto"), "category": None,
+            "content": tr("Nessuna informazione disponibile per questo sfondo."), "cat_or_source": None, "rated": False}
     if txt_path and txt_path.exists():
         try:
             content = txt_path.read_text(encoding="utf-8")
@@ -477,7 +509,7 @@ def set_autostart(on):
             if on:
                 # Il ritardo da' tempo alla rete di collegarsi dopo l'accesso
                 cmd = f"sleep 15 && exec {shlex.quote(str(sys.executable))} {shlex.quote(str(APOD_SCRIPT))}"
-                _write_desktop_file(AUTOSTART_FILE, "APOD Wallpaper", "Cambia lo sfondo all'accesso",
+                _write_desktop_file(AUTOSTART_FILE, "APOD Wallpaper", tr("Cambia lo sfondo all'accesso"),
                                     ["sh", "-c", cmd], ["X-GNOME-Autostart-enabled=true"])
             else:
                 AUTOSTART_FILE.unlink(missing_ok=True)
@@ -495,10 +527,12 @@ def set_autostart(on):
         return True
     except: return False
 
-def shortcut_path(where):
-    # Collegamento alla finestra cambia_sfondo: where e' "menu" (Start/applicazioni) o "desktop"
+def shortcut_path(where, lingua=None):
+    # Collegamento alla finestra cambia_sfondo: where e' "menu" (Start/applicazioni) o "desktop".
+    # Su Windows il nome del file e' quello che si vede, quindi dipende dalla lingua (predefinita quella in uso)
     if IS_WINDOWS:
-        return _windows_folder(0x0002 if where == "menu" else 0x0010) / "Cambia Sfondo.lnk"
+        name = EN["Cambia Sfondo"] if (lingua or _lingua) == "en" else "Cambia Sfondo"
+        return _windows_folder(0x0002 if where == "menu" else 0x0010) / f"{name}.lnk"
     if where == "menu":
         return XDG_DATA / "applications" / "cambia_sfondo.desktop"
     try: desktop = _run(["xdg-user-dir", "DESKTOP"]).stdout.strip()
@@ -508,8 +542,12 @@ def shortcut_path(where):
         desktop = Path.home() / "Desktop"
     return Path(desktop) / "cambia_sfondo.desktop"
 
+def _shortcut_paths(where):
+    # Il collegamento in tutte le lingue: su Windows ogni lingua ha il suo nome, su Linux il file e' uno solo
+    return {shortcut_path(where, lingua) for lingua in LINGUE} if IS_WINDOWS else {shortcut_path(where)}
+
 def shortcut_exists(where):
-    try: return shortcut_path(where).exists()
+    try: return any(path.exists() for path in _shortcut_paths(where))
     except: return False
 
 def _unlink(path):
@@ -531,16 +569,19 @@ def set_shortcuts(choices):
         try:
             path = shortcut_path(where)
             if not on:
-                _unlink(path)
+                for old in _shortcut_paths(where):
+                    _unlink(old)
                 result[where] = True
             elif not path.parent.is_dir() and where == "desktop":
                 result[where] = False
             elif IS_WINDOWS:
-                # Tolto prima, cosi' dopo PowerShell basta vedere se il file c'e'
-                _unlink(path)
+                # Tolto prima, cosi' dopo PowerShell basta vedere se il file c'e'; insieme si toglie quello
+                # nell'altra lingua, altrimenti cambiando lingua resterebbero due collegamenti
+                for old in _shortcut_paths(where):
+                    _unlink(old)
                 links.append((where, path))
             else:
-                _write_desktop_file(path, "Cambia Sfondo", "Valuta e cambia lo sfondo",
+                _write_desktop_file(path, tr("Cambia Sfondo"), tr("Valuta e cambia lo sfondo"),
                                     [sys.executable, UI_SCRIPT], ["Categories=Utility;"])
                 if where == "desktop":
                     # Sul desktop di GNOME l'icona si avvia solo se e' eseguibile e segnata come fidata
@@ -555,12 +596,13 @@ def set_shortcuts(choices):
         # quindi un solo PowerShell crea tutti i collegamenti (separati da |, che non puo' stare in un percorso)
         try:
             env = dict(os.environ, APOD_LNKS="|".join(str(path) for _, path in links), APOD_TARGET=str(pythonw_path()),
-                       APOD_ARGS=f'"{UI_SCRIPT}"', APOD_DIR=str(BASE_DIR), APOD_ICON=str(ICON_ICO))
+                       APOD_ARGS=f'"{UI_SCRIPT}"', APOD_DIR=str(BASE_DIR), APOD_ICON=str(ICON_ICO),
+                       APOD_DESC=tr("Valuta e cambia lo sfondo"))
             script = ("foreach ($lnk in $env:APOD_LNKS.Split('|')) { "
                       "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk); "
                       "$s.TargetPath = $env:APOD_TARGET; $s.Arguments = $env:APOD_ARGS; "
                       "$s.WorkingDirectory = $env:APOD_DIR; $s.IconLocation = $env:APOD_ICON; "
-                      "$s.Description = 'Valuta e cambia lo sfondo'; $s.Save() }")
+                      "$s.Description = $env:APOD_DESC; $s.Save() }")
             # Il codice di uscita non serve: se un solo collegamento fallisce e' diverso da 0 anche per gli altri
             _run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], timeout=30, env=env)
         except: pass
@@ -700,8 +742,8 @@ def apply_update(update):
     version = local_version() or {}
     if version.get("git"):
         try: res = _run(["git", "-C", str(BASE_DIR), "pull", "--ff-only"], timeout=60)
-        except Exception as e: return f"git pull non riuscito: {e}"
-        return None if res.returncode == 0 else (res.stderr.strip() or "git pull non riuscito")
+        except Exception as e: return tr("git pull non riuscito: {errore}", errore=e)
+        return None if res.returncode == 0 else (res.stderr.strip() or tr("git pull non riuscito"))
     try:
         import io, requests, zipfile
         res = requests.get(f"https://github.com/{REPO}/archive/{update['commit']}.zip", timeout=60)
@@ -719,4 +761,4 @@ def apply_update(update):
                                             "data": update.get("data", "")}, indent=4), encoding="utf-8")
         return None
     except Exception as e:
-        return f"Aggiornamento non riuscito: {e}"
+        return tr("Aggiornamento non riuscito: {errore}", errore=e)

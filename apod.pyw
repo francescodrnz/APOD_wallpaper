@@ -12,7 +12,7 @@ from pathlib import Path
 
 # comune installa requests e pillow se mancano, quindi va importato prima di loro
 from comune import (IS_WINDOWS, BG_PROCESS, IMAGES_DIR, get_current_wallpaper, set_wallpaper,
-                    update_windows_accent, load_stats, is_excluded, write_info, read_info, load_config, unsplash_key)
+                    update_windows_accent, load_stats, is_excluded, write_info, read_info, load_config, unsplash_key, tr)
 
 import requests
 from PIL import Image, ImageFilter, ImageEnhance
@@ -181,7 +181,7 @@ def get_unsplash_image():
 
         # Unsplash spesso ha 'alt_description' o 'description'
         raw_title = data.get("alt_description") or data.get("description") or f"Unsplash {theme}"
-        raw_desc = data.get("description") or data.get("alt_description") or "Nessuna descrizione disponibile."
+        raw_desc = data.get("description") or data.get("alt_description") or tr("Nessuna descrizione disponibile.")
 
         # Costruiamo i metadati
         full_desc = f"Photo by {data.get('user', {}).get('name', 'Unknown')}.\n{raw_desc}"

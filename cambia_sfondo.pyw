@@ -15,7 +15,8 @@ from comune import (IS_WINDOWS, BG_PROCESS, BASE_DIR, CONFIG_FILE, STATS_FILE, I
                     update_windows_accent, load_stats, is_excluded, read_info, mark_rated, list_history,
                     current_index, load_config, save_config, unsplash_key, autostart_enabled, set_autostart,
                     shortcut_exists, set_shortcuts, open_path, is_install_dir, uninstall, local_version,
-                    check_update, apply_update, find_old_install, import_old_install)
+                    check_update, apply_update, find_old_install, import_old_install, LINGUE, language,
+                    set_language, system_language, tr)
 
 FONT = ("Segoe UI", 9)
 
@@ -69,96 +70,129 @@ def restart_ui(root, *args):
 
 def version_text(version):
     if not version:
-        return "Versione sconosciuta"
+        return tr("Versione sconosciuta")
     data = version.get("data") or ""
-    if len(data) == 10:
+    if len(data) == 10 and language() == "it":
         data = f"{data[8:10]}/{data[5:7]}/{data[:4]}"
-    return f"Versione {version['commit'][:7]}" + (f" del {data}" if data else "") + f" (ramo {version.get('ramo', 'master')})"
+    commit, ramo = version["commit"][:7], version.get("ramo", "master")
+    if data:
+        return tr("Versione {commit} del {data} (ramo {ramo})", commit=commit, data=data, ramo=ramo)
+    return tr("Versione {commit} (ramo {ramo})", commit=commit, ramo=ramo)
 
 def ask_and_update(root, parent, update, set_status):
     novita = update["novita"]
     totale = update.get("totale", len(novita))
     elenco = "\n".join(f"• {n}" for n in novita[-15:])
     if totale > 15:
-        elenco = f"... e altre {totale - 15} modifiche precedenti\n" + elenco
-    if not messagebox.askyesno("Aggiornamento disponibile", f"Novità:\n\n{elenco}\n\nVuoi aggiornare ora?", parent=parent):
+        elenco = tr("... e altre {n} modifiche precedenti", n=totale - 15) + "\n" + elenco
+    if not messagebox.askyesno(tr("Aggiornamento disponibile"), tr("Novità:\n\n{elenco}\n\nVuoi aggiornare ora?", elenco=elenco),
+                               parent=parent):
         return
-    set_status("⏳ Aggiornamento in corso...", "blue")
+    set_status(tr("⏳ Aggiornamento in corso..."), "blue")
 
     def done(error, exc):
         error = error or (str(exc) if exc else None)
         owner = parent if parent.winfo_exists() else root
         if error:
-            set_status("⚠️ Aggiornamento non riuscito", "red")
-            messagebox.showerror("Aggiornamento non riuscito", error, parent=owner)
+            set_status(tr("⚠️ Aggiornamento non riuscito"), "red")
+            messagebox.showerror(tr("Aggiornamento non riuscito"), error, parent=owner)
         else:
-            messagebox.showinfo("Aggiornamento completato", "La finestra si riapre con la nuova versione.", parent=owner)
+            messagebox.showinfo(tr("Aggiornamento completato"), tr("La finestra si riapre con la nuova versione."), parent=owner)
             restart_ui(root)
     run_in_background(root, lambda: apply_update(update), done)
 
-def build_settings(root, win, on_close, intro=None, first_install=False, old_config=None):
+def build_settings(root, win, on_close, intro=None, first_install=False, old_config=None, values=None, rebuild=None):
     """Riempie win con le impostazioni. on_close(salvate) chiude la finestra.
     intro: testo in cima, solo nella finestra mostrata dagli installer; first_install: prima installazione, tutto selezionato;
-    old_config: config di una vecchia installazione da portare qui."""
+    old_config: config di una vecchia installazione da portare qui.
+    values: scelte gia' fatte da rimettere nella finestra; rebuild(values): la riempie di nuovo dopo un cambio di lingua."""
     install_mode = intro is not None
+    values = values or {}
     # Senza creare config.json: se la prima installazione viene annullata, al rilancio deve risultare ancora la prima
     cfg = {**DEFAULT_CONFIG, **(old_config or {}), **read_config()}
     body = tk.Frame(win, padx=12, pady=8)
     body.pack(fill=tk.BOTH, expand=True)
 
-    if install_mode:
-        tk.Label(body, text=intro, font=("Segoe UI", 10), justify=tk.LEFT, wraplength=480).pack(anchor=tk.W, pady=(0, 6))
+    def initial(name, read):
+        # Valore da mostrare: quello scelto prima del cambio di lingua, altrimenti quello letto
+        return values[name] if name in values else read()
 
     def section(title):
         frame = tk.LabelFrame(body, text=title, font=("Segoe UI", 9, "bold"), padx=8, pady=4)
         frame.pack(fill=tk.X, pady=4)
         return frame
 
+    # La lingua viene per prima e il titolo e' in tutte e due le lingue, cosi' la trova anche chi non legge l'altra
+    f = section("🌐 Lingua / Language")
+    v_lang = tk.StringVar(win, language())
+    row = tk.Frame(f)
+    row.pack(anchor=tk.W)
+
+    def change_language():
+        if v_lang.get() == language():
+            return
+        set_language(v_lang.get())
+        current = {"auto": v_auto.get(), "menu": v_menu.get(), "desk": v_desk.get(),
+                   "key": entry_key.get(), "accent": v_accent.get()}
+        # Dopo il clic: il pulsante premuto viene distrutto insieme al resto della finestra
+        def redo():
+            for child in win.winfo_children():
+                child.destroy()
+            rebuild(current)
+        win.after_idle(redo)
+
+    for code, name in LINGUE.items():
+        tk.Radiobutton(row, text=name, value=code, variable=v_lang, font=FONT,
+                       command=change_language if rebuild else None).pack(side=tk.LEFT, padx=(0, 12))
+
+    if install_mode:
+        tk.Label(body, text=intro, font=("Segoe UI", 10), justify=tk.LEFT, wraplength=480).pack(anchor=tk.W, pady=(0, 6))
+
     # Avvio automatico e collegamenti: lo stato viene letto dal sistema
-    f = section("Avvio")
-    v_auto = tk.BooleanVar(win, first_install or autostart_enabled())
-    v_menu = tk.BooleanVar(win, first_install or shortcut_exists("menu"))
-    v_desk = tk.BooleanVar(win, first_install or shortcut_exists("desktop"))
-    menu_name = "menu Start" if IS_WINDOWS else "menu delle applicazioni"
-    for text, var in (("Cambia sfondo a ogni accesso", v_auto),
-                      (f"Collegamento a questa finestra nel {menu_name}", v_menu),
-                      ("Collegamento a questa finestra sul desktop", v_desk)):
+    f = section(tr("Avvio"))
+    v_auto = tk.BooleanVar(win, initial("auto", lambda: first_install or autostart_enabled()))
+    v_menu = tk.BooleanVar(win, initial("menu", lambda: first_install or shortcut_exists("menu")))
+    v_desk = tk.BooleanVar(win, initial("desk", lambda: first_install or shortcut_exists("desktop")))
+    menu_name = tr("menu Start") if IS_WINDOWS else tr("menu delle applicazioni")
+    for text, var in ((tr("Cambia sfondo a ogni accesso"), v_auto),
+                      (tr("Collegamento a questa finestra nel {menu}", menu=menu_name), v_menu),
+                      (tr("Collegamento a questa finestra sul desktop"), v_desk)):
         tk.Checkbutton(f, text=text, variable=var, font=FONT).pack(anchor=tk.W)
 
-    f = section("Fonti")
-    tk.Label(f, text="Chiave Unsplash (facoltativa: senza, le immagini arrivano solo dalla NASA)",
+    f = section(tr("Fonti"))
+    tk.Label(f, text=tr("Chiave Unsplash (facoltativa: senza, le immagini arrivano solo dalla NASA)"),
              font=FONT, justify=tk.LEFT, wraplength=480).pack(anchor=tk.W)
     entry_key = tk.Entry(f, width=48, font=FONT)
-    entry_key.insert(0, unsplash_key(cfg))
+    entry_key.insert(0, initial("key", lambda: unsplash_key(cfg)))
     entry_key.pack(fill=tk.X, pady=2)
-    link = tk.Label(f, text="Ottieni una chiave gratuita (Register → New Application → Access Key)",
+    link = tk.Label(f, text=tr("Ottieni una chiave gratuita (Register → New Application → Access Key)"),
                     fg="blue", cursor="hand2", font=("Segoe UI", 9, "underline"))
     link.pack(anchor=tk.W)
     link.bind("<Button-1>", lambda e: webbrowser.open("https://unsplash.com/developers"))
 
-    v_accent = tk.BooleanVar(win, cfg.get("colore_accento", True))
+    v_accent = tk.BooleanVar(win, initial("accent", lambda: cfg.get("colore_accento", True)))
     if IS_WINDOWS:
-        f = section("Aspetto")
-        tk.Checkbutton(f, text="Usa il colore dello sfondo come colore d'accento di Windows",
+        f = section(tr("Aspetto"))
+        tk.Checkbutton(f, text=tr("Usa il colore dello sfondo come colore d'accento di Windows"),
                        variable=v_accent, font=FONT).pack(anchor=tk.W)
 
-    f = section("Cartelle")
+    f = section(tr("Cartelle"))
     row = tk.Frame(f)
     row.pack(fill=tk.X)
-    tk.Button(row, text="📁 Apri cartella del programma", font=FONT,
+    tk.Button(row, text=tr("📁 Apri cartella del programma"), font=FONT,
               command=lambda: open_path(BASE_DIR)).pack(side=tk.LEFT, padx=(0, 4), pady=2)
-    tk.Button(row, text="🖼️ Apri cartella immagini", font=FONT,
+    tk.Button(row, text=tr("🖼️ Apri cartella immagini"), font=FONT,
               command=lambda: (IMAGES_DIR.mkdir(exist_ok=True), open_path(IMAGES_DIR))).pack(side=tk.LEFT, pady=2)
     tk.Label(f, text=str(BASE_DIR), fg="gray", font=("Segoe UI", 8), justify=tk.LEFT, wraplength=480).pack(anchor=tk.W)
 
     if not install_mode:
-        f = section("Versione")
+        f = section(tr("Versione"))
         tk.Label(f, text=version_text(local_version()), font=FONT).pack(anchor=tk.W)
         row = tk.Frame(f)
         row.pack(fill=tk.X)
-        btn_check = tk.Button(row, text="🔍 Controlla aggiornamenti", font=FONT)
+        btn_check = tk.Button(row, text=tr("🔍 Controlla aggiornamenti"), font=FONT)
         btn_check.pack(side=tk.LEFT, padx=(0, 4), pady=2)
-        btn_update = tk.Button(row, text="⬇️ Aggiorna", font=FONT, state=tk.DISABLED)
+        btn_update = tk.Button(row, text=tr("⬇️ Aggiorna"), font=FONT, state=tk.DISABLED)
         btn_update.pack(side=tk.LEFT, pady=2)
         lbl_update = tk.Label(f, text="", font=("Segoe UI", 9, "italic"))
         lbl_update.pack(anchor=tk.W)
@@ -171,17 +205,18 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
         def checked(update, error):
             btn_check.config(state=tk.NORMAL)
             if error:
-                set_status("⚠️ Impossibile controllare (connessione assente?)", "red")
+                set_status(tr("⚠️ Impossibile controllare (connessione assente?)"), "red")
             elif update:
                 found["update"] = update
-                set_status(f"🆕 Nuova versione disponibile ({update.get('totale', len(update['novita']))} modifiche)", "green")
+                set_status(tr("🆕 Nuova versione disponibile ({n} modifiche)", n=update.get("totale", len(update["novita"]))),
+                           "green")
                 btn_update.config(state=tk.NORMAL)
             else:
-                set_status("✅ Il programma è aggiornato", "green")
+                set_status(tr("✅ Il programma è aggiornato"), "green")
 
         def check():
             btn_check.config(state=tk.DISABLED)
-            set_status("⏳ Controllo in corso...", "blue")
+            set_status(tr("⏳ Controllo in corso..."), "blue")
             run_in_background(root, check_update, checked)
 
         btn_check.config(command=check)
@@ -191,10 +226,13 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
         # Su Windows ogni collegamento passa da PowerShell e ci mette qualche secondo: il lavoro va in un thread,
         # intanto la finestra dice cosa sta facendo e non accetta altri clic
         key, accent, auto = entry_key.get().strip() or UNSPLASH_KEY_PLACEHOLDER, v_accent.get(), v_auto.get()
+        lang = v_lang.get()
         shortcuts = {"menu": v_menu.get(), "desktop": v_desk.get()}
+        # I nomi dei collegamenti dipendono dalla lingua
+        set_language(lang)
         for button in buttons:
             button.config(state=tk.DISABLED)
-        lbl_saving.config(text="⏳ Salvataggio in corso...")
+        lbl_saving.config(text=tr("⏳ Salvataggio in corso..."))
         win.config(cursor="watch")
         win.protocol("WM_DELETE_WINDOW", lambda: None)
 
@@ -202,52 +240,55 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
             # Senza config.json si parte da quello mostrato, che contiene anche le categorie della vecchia installazione
             new_cfg = load_config() if CONFIG_FILE.exists() else dict(cfg)
             new_cfg["UNSPLASH_API_KEY"] = key
+            new_cfg["lingua"] = lang
             new_cfg["colore_accento"] = accent
             # Tutto viene riscritto anche se non e' cambiato: cosi' i collegamenti puntano sempre a questa cartella
-            done = {"config.json": save_config(new_cfg), "avvio automatico": set_autostart(auto)}
+            done = {"config.json": save_config(new_cfg), tr("avvio automatico"): set_autostart(auto)}
             links = set_shortcuts(shortcuts)
-            done[f"collegamento nel {menu_name}"] = links["menu"]
-            done["collegamento sul desktop"] = links["desktop"]
+            done[tr("collegamento nel {menu}", menu=menu_name)] = links["menu"]
+            done[tr("collegamento sul desktop")] = links["desktop"]
             return [name for name, ok in done.items() if not ok]
 
         def saved(failed, error):
             win.config(cursor="")
             if error:
-                failed = ["impostazioni"]
+                failed = [tr("impostazioni")]
             if failed:
-                messagebox.showwarning("Impostazioni", "Non è stato possibile impostare: " + ", ".join(failed), parent=win)
+                messagebox.showwarning(tr("Impostazioni"), tr("Non è stato possibile impostare: {elenco}", elenco=", ".join(failed)),
+                                       parent=win)
             on_close(True)
         run_in_background(root, work, saved)
 
     def do_uninstall():
-        if not messagebox.askyesno("Disinstalla", "Vuoi togliere l'avvio automatico e i collegamenti?", parent=win):
+        if not messagebox.askyesno(tr("Disinstalla"), tr("Vuoi togliere l'avvio automatico e i collegamenti?"), parent=win):
             return
         delete = is_install_dir() and messagebox.askyesno(
-            "Disinstalla", f"Vuoi cancellare anche la cartella del programma, con immagini e statistiche?\n\n{BASE_DIR}", parent=win)
+            tr("Disinstalla"), tr("Vuoi cancellare anche la cartella del programma, con immagini e statistiche?\n\n{cartella}",
+                                  cartella=BASE_DIR), parent=win)
         ok = uninstall(delete)
-        msg = "APOD Wallpaper è stato disinstallato." if ok else "Alcuni collegamenti non sono stati tolti."
+        msg = tr("APOD Wallpaper è stato disinstallato.") if ok else tr("Alcuni collegamenti non sono stati tolti.")
         if not delete:
-            msg += f"\n\nI file sono rimasti in:\n{BASE_DIR}"
+            msg += tr("\n\nI file sono rimasti in:\n{cartella}", cartella=BASE_DIR)
         win.destroy()
         if IS_WINDOWS:
             # Explorer, aggiornando il desktop senza i collegamenti, puo' passare davanti alla finestra:
             # MessageBoxW di show_popup resta in primo piano
             root.withdraw()
-            show_popup("Disinstalla", msg)
+            show_popup(tr("Disinstalla"), msg)
         else:
-            messagebox.showinfo("Disinstalla", msg, parent=root)
+            messagebox.showinfo(tr("Disinstalla"), msg, parent=root)
         root.destroy()
 
     bottom = tk.Frame(win, padx=12, pady=8)
     bottom.pack(fill=tk.X)
     buttons = []
     if not install_mode:
-        buttons.append(tk.Button(bottom, text="🗑️ Disinstalla...", font=FONT, command=do_uninstall))
+        buttons.append(tk.Button(bottom, text=tr("🗑️ Disinstalla..."), font=FONT, command=do_uninstall))
         buttons[-1].pack(side=tk.LEFT)
-    buttons.append(tk.Button(bottom, text="Installa" if first_install else "Salva", font=FONT, width=12, bg="#e5ffe5",
+    buttons.append(tk.Button(bottom, text=tr("Installa") if first_install else tr("Salva"), font=FONT, width=12, bg="#e5ffe5",
                              command=save))
     buttons[-1].pack(side=tk.RIGHT, padx=(4, 0))
-    buttons.append(tk.Button(bottom, text="Annulla", font=FONT, width=10, command=lambda: on_close(False)))
+    buttons.append(tk.Button(bottom, text=tr("Annulla"), font=FONT, width=10, command=lambda: on_close(False)))
     buttons[-1].pack(side=tk.RIGHT)
     lbl_saving = tk.Label(bottom, text="", fg="blue", font=("Segoe UI", 9, "italic"))
     lbl_saving.pack(side=tk.RIGHT, padx=4)
@@ -259,26 +300,14 @@ def install():
     first_install = not CONFIG_FILE.exists()
     previous = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--precedente=")), "")
     unchanged = previous and previous == (local_version() or {}).get("commit")
-    old_config = None
+    old_config, old_dir = None, None
     if first_install:
-        title = "Installazione APOD Wallpaper"
-        intro = ("Scegli come usare APOD Wallpaper e premi Installa: il primo sfondo arriva subito dopo.\n"
-                 "Potrai cambiare tutto in seguito dal pulsante Impostazioni.")
         # Versione precedente installata a mano: chiave, categorie e statistiche passano qui
         old_dir = find_old_install()
         if old_dir:
             old_config = import_old_install(old_dir)
-            intro += (f"\n\nChiave Unsplash, categorie e statistiche sono state prese dalla versione precedente, in:\n"
-                      f"{old_dir}\nDopo l'installazione puoi cancellare quella cartella.")
-    elif unchanged:
-        title = "APOD Wallpaper"
-        intro = "APOD Wallpaper è già all'ultima versione. Qui sotto puoi cambiare le impostazioni."
-    else:
-        title = "APOD Wallpaper aggiornato"
-        intro = "Aggiornamento completato. Le impostazioni sono rimaste quelle di prima."
     root = tk.Tk()
     setup_window(root)
-    root.title(title)
     root.resizable(False, False)
     # La finestra principale, se e' aperta, sta sempre in primo piano e coprirebbe questa
     root.attributes("-topmost", True)
@@ -291,8 +320,27 @@ def install():
         else:
             root.destroy()
 
-    build_settings(root, root, close, intro=intro, first_install=first_install, old_config=old_config)
-    center(root)
+    def fill(values=None):
+        # Testi nella lingua scelta: la finestra viene riempita di nuovo a ogni cambio di lingua
+        if first_install:
+            title = tr("Installazione APOD Wallpaper")
+            intro = tr("Scegli come usare APOD Wallpaper e premi Installa: il primo sfondo arriva subito dopo.\n"
+                       "Potrai cambiare tutto in seguito dal pulsante Impostazioni.")
+            if old_dir:
+                intro += tr("\n\nChiave Unsplash, categorie e statistiche sono state prese dalla versione precedente, in:\n"
+                            "{cartella}\nDopo l'installazione puoi cancellare quella cartella.", cartella=old_dir)
+        elif unchanged:
+            title = "APOD Wallpaper"
+            intro = tr("APOD Wallpaper è già all'ultima versione. Qui sotto puoi cambiare le impostazioni.")
+        else:
+            title = tr("APOD Wallpaper aggiornato")
+            intro = tr("Aggiornamento completato. Le impostazioni sono rimaste quelle di prima.")
+        root.title(title)
+        build_settings(root, root, close, intro=intro, first_install=first_install, old_config=old_config,
+                       values=values, rebuild=fill)
+        center(root)
+
+    fill()
     root.mainloop()
 
 def get_current_wallpaper_info():
@@ -336,18 +384,18 @@ def main():
         root.geometry(f'{window_width}x{window_height}+{x}+{y}')
     root.attributes("-topmost", True)
     root.resizable(False, False)
-    root.title("Valutazione Sfondo")
+    root.title(tr("Valutazione Sfondo"))
 
     # Banda mostrata solo se su GitHub c'e' una versione piu' recente
     banner = tk.Frame(root, bg="#fff4cc")
-    tk.Label(banner, text="🆕 È disponibile un aggiornamento", bg="#fff4cc", font=FONT).pack(side=tk.LEFT, padx=6, pady=4)
-    btn_update = tk.Button(banner, text="Aggiorna", font=FONT)
+    tk.Label(banner, text=tr("🆕 È disponibile un aggiornamento"), bg="#fff4cc", font=FONT).pack(side=tk.LEFT, padx=6, pady=4)
+    btn_update = tk.Button(banner, text=tr("Aggiorna"), font=FONT)
     btn_update.pack(side=tk.RIGHT, padx=6, pady=4)
 
     lbl_title = tk.Label(root, text="", font=("Segoe UI", 10, "bold"), pady=10, wraplength=320)
     lbl_title.pack()
 
-    lbl = tk.Label(root, text="Cosa vuoi fare con lo sfondo attuale?", font=("Segoe UI", 11), pady=5)
+    lbl = tk.Label(root, text=tr("Cosa vuoi fare con lo sfondo attuale?"), font=("Segoe UI", 11), pady=5)
     lbl.pack()
 
     btn_frame = tk.Frame(root)
@@ -359,22 +407,22 @@ def main():
     btn_like = tk.Button(btn_frame, width=16, bg="#e5ffe5", font=("Segoe UI", 9))
     btn_like.grid(row=0, column=1, padx=5, pady=5)
 
-    btn_change = tk.Button(btn_frame, text="🔄 Cambia\n(Senza valutare)", width=16, bg="#f0f0f0", font=("Segoe UI", 9))
+    btn_change = tk.Button(btn_frame, text=tr("🔄 Cambia\n(Senza valutare)"), width=16, bg="#f0f0f0", font=("Segoe UI", 9))
     btn_change.grid(row=1, column=0, padx=5, pady=5)
 
-    btn_info = tk.Button(btn_frame, text="📄 Apri info\n(Mostra testo)", width=16, bg="#eef5ff", font=("Segoe UI", 9))
+    btn_info = tk.Button(btn_frame, text=tr("📄 Apri info\n(Mostra testo)"), width=16, bg="#eef5ff", font=("Segoe UI", 9))
     btn_info.grid(row=1, column=1, padx=5, pady=5)
 
-    btn_manage = tk.Button(btn_frame, text="📊 Statistiche", width=16, bg="#f3e5ff", font=("Segoe UI", 9))
+    btn_manage = tk.Button(btn_frame, text=tr("📊 Statistiche"), width=16, bg="#f3e5ff", font=("Segoe UI", 9))
     btn_manage.grid(row=2, column=0, padx=5, pady=5)
 
-    btn_settings = tk.Button(btn_frame, text="⚙️ Impostazioni", width=16, bg="#f0f0f0", font=("Segoe UI", 9))
+    btn_settings = tk.Button(btn_frame, text=tr("⚙️ Impostazioni"), width=16, bg="#f0f0f0", font=("Segoe UI", 9))
     btn_settings.grid(row=2, column=1, padx=5, pady=5)
 
-    btn_prev = tk.Button(btn_frame, text="⬅️ Precedente", width=16, bg="#f0f0f0", font=("Segoe UI", 9))
+    btn_prev = tk.Button(btn_frame, text=tr("⬅️ Precedente"), width=16, bg="#f0f0f0", font=("Segoe UI", 9))
     btn_prev.grid(row=3, column=0, padx=5, pady=5)
 
-    btn_next = tk.Button(btn_frame, text="Successivo ➡️", width=16, bg="#f0f0f0", font=("Segoe UI", 9))
+    btn_next = tk.Button(btn_frame, text=tr("Successivo ➡️"), width=16, bg="#f0f0f0", font=("Segoe UI", 9))
     btn_next.grid(row=3, column=1, padx=5, pady=5)
 
     lbl_status = tk.Label(root, text="", font=("Segoe UI", 9, "italic"))
@@ -403,8 +451,8 @@ def main():
         lbl_title.config(text=title_str)
         
         rated = info.get("rated", False)
-        text_dislike = "👎 Non mi piace\n(Già valutato)" if rated else "👎 Non mi piace\n(Scarta)"
-        text_like = "👍 Mi piace!\n(Già valutato)" if rated else "👍 Mi piace!\n(Mantieni)"
+        text_dislike = tr("👎 Non mi piace\n(Già valutato)") if rated else tr("👎 Non mi piace\n(Scarta)")
+        text_like = tr("👍 Mi piace!\n(Già valutato)") if rated else tr("👍 Mi piace!\n(Mantieni)")
         
         btn_dislike.config(text=text_dislike, state=tk.DISABLED if rated else tk.NORMAL)
         btn_like.config(text=text_like, state=tk.DISABLED if rated else tk.NORMAL)
@@ -428,16 +476,16 @@ def main():
     def check_process(proc, start_time, previous_wp):
         if proc.poll() is None:
             elapsed = int(time.time() - start_time)
-            lbl_status.config(text=f"⏳ Sfondo in download... ({elapsed}s)", fg="blue")
+            lbl_status.config(text=tr("⏳ Sfondo in download... ({s}s)", s=elapsed), fg="blue")
             root.after(250, check_process, proc, start_time, previous_wp)
         elif get_current_wallpaper() != previous_wp:
-            refresh_ui("✅ Sfondo cambiato con successo!", "green")
+            refresh_ui(tr("✅ Sfondo cambiato con successo!"), "green")
         else:
-            refresh_ui("⚠️ Nessuno sfondo trovato, riprova più tardi", "red")
+            refresh_ui(tr("⚠️ Nessuno sfondo trovato, riprova più tardi"), "red")
 
     def run_apod():
         if APOD_SCRIPT.exists():
-            disable_buttons("⏳ Sfondo in download... (0s)")
+            disable_buttons(tr("⏳ Sfondo in download... ({s}s)", s=0))
             previous_wp = get_current_wallpaper()
             proc = subprocess.Popen([sys.executable, str(APOD_SCRIPT)], cwd=str(BASE_DIR), **BG_PROCESS)
             root.after(250, check_process, proc, time.time(), previous_wp)
@@ -450,22 +498,22 @@ def main():
         if 0 <= new_idx < len(files):
             new_wp = files[new_idx]
 
-            disable_buttons("⏳ Impostazione sfondo...")
+            disable_buttons(tr("⏳ Impostazione sfondo..."))
             root.update()
             
             if set_wallpaper(new_wp):
                 update_windows_accent(new_wp)
                 
-            refresh_ui("✅ Sfondo impostato!", "green")
+            refresh_ui(tr("✅ Sfondo impostato!"), "green")
 
     def action(choice):
         if choice == "open_txt":
             info_win = tk.Toplevel(root)
-            info_win.title("Informazioni Sfondo")
+            info_win.title(tr("Informazioni Sfondo"))
             info_win.geometry("500x400")
             make_modal(info_win)
             
-            btn_close = tk.Button(info_win, text="Chiudi", command=info_win.destroy, width=15)
+            btn_close = tk.Button(info_win, text=tr("Chiudi"), command=info_win.destroy, width=15)
             btn_close.pack(side=tk.BOTTOM, pady=10)
 
             # Aggiungiamo uno scrollbar in caso di testo molto lungo
@@ -495,7 +543,7 @@ def main():
             if cat and not rated:
                 update_stats(cat, is_positive=True)
                 mark_current_rated()
-            refresh_ui("✅ Valutazione salvata!", "green")
+            refresh_ui(tr("✅ Valutazione salvata!"), "green")
         elif choice == "dislike":
             if cat and not rated:
                 update_stats(cat, is_positive=False)
@@ -514,11 +562,11 @@ def main():
         stats = load_stats()
 
         manage_win = tk.Toplevel(root)
-        manage_win.title("Gestione & Statistiche")
+        manage_win.title(tr("Gestione & Statistiche"))
         manage_win.geometry("600x450")
         make_modal(manage_win)
 
-        lbl_info = tk.Label(manage_win, text="Gestisci le categorie e visualizza i voti (🔴 = Esclusa in automatico)", pady=10)
+        lbl_info = tk.Label(manage_win, text=tr("Gestisci le categorie e visualizza i voti (🔴 = Esclusa in automatico)"), pady=10)
         lbl_info.pack()
 
         frames_container = tk.Frame(manage_win)
@@ -542,7 +590,7 @@ def main():
             
             cols = ("cat", "p", "s")
             tree = ttk.Treeview(f_sec, columns=cols, show="headings", height=12)
-            tree.heading("cat", text="Categoria", command=lambda: treeview_sort_column(tree, "cat", False))
+            tree.heading("cat", text=tr("Categoria"), command=lambda: treeview_sort_column(tree, "cat", False))
             tree.heading("p", text="👍", command=lambda: treeview_sort_column(tree, "p", False))
             tree.heading("s", text="👎", command=lambda: treeview_sort_column(tree, "s", False))
             tree.column("cat", width=120, anchor=tk.W)
@@ -575,13 +623,13 @@ def main():
                 
             btn_f = tk.Frame(f_sec)
             btn_f.pack()
-            tk.Button(btn_f, text="+ Aggiungi", command=add_item).pack(side=tk.LEFT, padx=2)
-            tk.Button(btn_f, text="- Rimuovi", command=rem_item).pack(side=tk.LEFT, padx=2)
+            tk.Button(btn_f, text=tr("+ Aggiungi"), command=add_item).pack(side=tk.LEFT, padx=2)
+            tk.Button(btn_f, text=tr("- Rimuovi"), command=rem_item).pack(side=tk.LEFT, padx=2)
             
             return tree
 
-        tree_u = setup_section(frames_container, "Unsplash Themes", cfg.get("unsplash_categories", []))
-        tree_n = setup_section(frames_container, "NASA Queries", cfg.get("nasa_categories", []))
+        tree_u = setup_section(frames_container, tr("Temi Unsplash"), cfg.get("unsplash_categories", []))
+        tree_n = setup_section(frames_container, tr("Ricerche NASA"), cfg.get("nasa_categories", []))
 
         def save_and_close():
             cfg["unsplash_categories"] = [tree_u.item(child, "text") for child in tree_u.get_children()]
@@ -592,7 +640,7 @@ def main():
             except: pass
             manage_win.destroy()
 
-        btn_save = tk.Button(manage_win, text="Salva e Chiudi", command=save_and_close, bg="#e5ffe5", width=20)
+        btn_save = tk.Button(manage_win, text=tr("Salva e Chiudi"), command=save_and_close, bg="#e5ffe5", width=20)
         btn_save.pack(pady=10)
 
         if not IS_WINDOWS:
@@ -602,18 +650,28 @@ def main():
 
     def open_settings():
         settings_win = tk.Toplevel(root)
-        settings_win.title("Impostazioni")
         settings_win.resizable(False, False)
         settings_win.transient(root)
+        start_language = language()
 
         def close(saved):
             settings_win.destroy()
-            if saved:
-                refresh_ui("✅ Impostazioni salvate", "green")
+            if not saved:
+                # La lingua provata nelle Impostazioni non resta se non viene salvata
+                set_language(start_language)
+            elif language() != start_language:
+                # Questa finestra e' stata costruita nell'altra lingua: si riapre nella nuova
+                restart_ui(root)
+            else:
+                refresh_ui(tr("✅ Impostazioni salvate"), "green")
 
-        build_settings(root, settings_win, close)
-        # Senza posizione Tk su Windows la apre nell'angolo in alto a sinistra dello schermo
-        center(settings_win)
+        def fill(values=None):
+            settings_win.title(tr("Impostazioni"))
+            build_settings(root, settings_win, close, values=values, rebuild=fill)
+            # Senza posizione Tk su Windows la apre nell'angolo in alto a sinistra dello schermo
+            center(settings_win)
+
+        fill()
         make_modal(settings_win)
 
     def show_banner(update, error):
