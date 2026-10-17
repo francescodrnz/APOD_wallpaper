@@ -523,6 +523,8 @@ def set_shortcuts(choices):
             elif not path.parent.is_dir() and where == "desktop":
                 result[where] = False
             elif IS_WINDOWS:
+                # Tolto prima, cosi' dopo PowerShell basta vedere se il file c'e'
+                path.unlink(missing_ok=True)
                 links.append((where, path))
             else:
                 _write_desktop_file(path, "Cambia Sfondo", "Valuta e cambia lo sfondo",
@@ -546,11 +548,11 @@ def set_shortcuts(choices):
                       "$s.TargetPath = $env:APOD_TARGET; $s.Arguments = $env:APOD_ARGS; "
                       "$s.WorkingDirectory = $env:APOD_DIR; $s.IconLocation = $env:APOD_ICON; "
                       "$s.Description = 'Valuta e cambia lo sfondo'; $s.Save() }")
-            res = _run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], timeout=30, env=env)
-            created = res.returncode == 0
-        except: created = False
+            # Il codice di uscita non serve: se un solo collegamento fallisce e' diverso da 0 anche per gli altri
+            _run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], timeout=30, env=env)
+        except: pass
         for where, path in links:
-            result[where] = created and path.exists()
+            result[where] = path.exists()
     return result
 
 def is_install_dir():
