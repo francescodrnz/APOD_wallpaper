@@ -31,23 +31,14 @@ Su Linux ho provato tutto con `HOME` temporaneo e un ritardo finto di 3 s in `se
 3. **Installer sopra la finestra principale.** Apri la finestra principale, poi rilancia l'installer. La finestra "APOD Wallpaper" deve comparire sopra quella principale, e un eventuale avviso di "Salva" deve restare visibile. **Chiedi conferma all'utente.**
 4. **Disinstalla.** "Impostazioni → Disinstalla" deve togliere ancora entrambi i collegamenti e l'avvio automatico (ora passa da `set_shortcuts`).
 
-## Alla fine
+## Alla fine: questo è l'ultimo giro
 
-- Correggi quello che trovi: commit in italiano, Conventional Commits, una riga.
-- In `docs/verifica-windows.md`, sezione "Seguito", aggiungi l'esito del terzo giro.
-- Fai commit e push sul ramo `installazione-semplice`. Poi riporta il PC allo stato di partenza.
+L'utente non vuole altri passaggi tra Linux e Windows. Chiudi tu tutto quello che trovi, senza rimandare niente alla sessione Linux:
 
-## Comunicazione con la sessione su Linux
-
-Le due sessioni non si parlano direttamente: comunicano solo con file nella cartella `docs/` del ramo, che l'utente fa leggere all'altra dopo il pull. Non chiedere all'utente di copiare e incollare messaggi.
-
-- Scrivi i finding per la sessione Linux in `docs/da-windows.md`, aggiungendo una sezione per questo giro, datata e con il commit di partenza. Ci vanno:
-  - i bug trovati e non corretti, con passi per riprodurli e una proposta;
-  - le decisioni da prendere;
-  - le cose da provare su Linux;
-  - le domande;
-  - le modifiche che hai fatto a codice condiviso (`comune.py`, `cambia_sfondo.pyw`, `apod.pyw`), anche se sono già corrette, perché toccano anche Linux.
-- I risultati della verifica restano in `docs/verifica-windows.md`. In `docs/da-windows.md` metti solo quello che richiede un'azione o una risposta.
-- Le risposte e le nuove istruzioni da Linux arrivano in questo file (`docs/istruzioni-windows.md`): quando l'utente ti dice di fare pull, rileggilo.
-- Fai sempre commit e push di questi file, altrimenti l'altra sessione non li vede.
-- Alla fine di' all'utente in una riga se in `docs/da-windows.md` c'è qualcosa per la sessione Linux.
+- **Correggi tu ogni problema**, anche piccolo e anche di UX: non scrivere proposte né decisioni da prendere. Se c'è da scegliere, scegli la soluzione più semplice e scrivi il motivo nel messaggio di commit.
+- Se tocchi codice condiviso, metti le modifiche nel ramo Windows (`if IS_WINDOWS` / sotto il ramo `if not IS_WINDOWS:`) quando puoi. Se devi cambiare codice comune ai due sistemi, fai la modifica più piccola possibile e controlla che il ramo Linux resti com'era: `python -c "import ast; ast.parse(open('cambia_sfondo.pyw', encoding='utf-8').read())"` e lo stesso per `comune.py` e `apod.pyw`.
+- Commit in italiano, Conventional Commits, una riga.
+- In `docs/verifica-windows.md`, sezione "Seguito", aggiungi l'esito del terzo giro e le correzioni fatte.
+- **Non scrivere in `docs/da-windows.md`.**
+- Fai commit e push sul ramo `installazione-semplice`, poi riporta il PC allo stato di partenza.
+- All'utente di' solo una riga: il ramo è pronto per il merge su `master`, oppure cosa non sei riuscito a correggere e perché.
