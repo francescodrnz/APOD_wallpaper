@@ -8,7 +8,7 @@ Automated wallpaper switcher for Windows 10/11 and Linux (GNOME, KDE Plasma, XFC
 * **One-Line Install:** no git, no manual setup. The installer also installs Python (Windows) or the dependencies (Linux) when they are missing.
 * **Smart Resize:** Automatically applies a cinematic "Ambient Blur" to fill the screen, preserving the original aspect ratio without cropping. The wallpaper fit mode is set automatically.
 * **DWM Color Sync:** Extracts the dominant color from the wallpaper and applies it to the Windows interface (Dark Mode safe). Can be turned off in the settings.
-* **Multi-Source:** Cycles through NASA APOD, NASA Library (without event and conference photos), ESA Hubble and Webb pictures of the week/month, the Wikimedia Commons picture of the day, the Bing image of the day, Unsplash and Pixabay (Nature/Space).
+* **Multi-Source:** Cycles through NASA APOD (the picture of the day becomes your wallpaper at the first change after it is out, then the archive since 1995), NASA Library (without event and conference photos), ESA Hubble and Webb pictures of the week/month, the Wikimedia Commons picture of the day, the Bing image of the day, Unsplash and Pixabay (Nature/Space).
 * **Settings Window:** language, auto-start, shortcuts, Unsplash and Pixabay keys, folders, updates and uninstall, all in one place.
 * **English and Italian:** the language follows the system and can be changed at install time or in the settings.
 * **Update Notice:** the window tells you when a new version is on GitHub and updates with one click.

@@ -8,7 +8,7 @@ Cambia-sfondo automatico per Windows 10/11 e Linux (GNOME, KDE Plasma, XFCE, Cin
 * **Installazione con una riga:** niente git, niente configurazione a mano. L'installer installa anche Python (Windows) o le dipendenze (Linux) se mancano.
 * **Ridimensionamento intelligente:** riempie lo schermo con un "Ambient Blur" in stile cinematografico, mantenendo le proporzioni originali senza ritagliare. La modalità di adattamento dello sfondo viene impostata da sola.
 * **Colore d'accento:** prende il colore dominante dello sfondo e lo applica all'interfaccia di Windows (compatibile con il tema scuro). Si può disattivare nelle impostazioni.
-* **Più fonti:** alterna NASA APOD, NASA Image Library (senza le foto di eventi e conferenze), le foto della settimana e del mese di ESA Hubble e Webb, la foto del giorno di Wikimedia Commons, l'immagine del giorno di Bing, Unsplash e Pixabay (natura/spazio).
+* **Più fonti:** alterna NASA APOD (la foto del giorno diventa sfondo al primo cambio in cui è disponibile, poi l'archivio dal 1995), NASA Image Library (senza le foto di eventi e conferenze), le foto della settimana e del mese di ESA Hubble e Webb, la foto del giorno di Wikimedia Commons, l'immagine del giorno di Bing, Unsplash e Pixabay (natura/spazio).
 * **Finestra delle impostazioni:** lingua, avvio automatico, collegamenti, chiavi Unsplash e Pixabay, cartelle, aggiornamenti e disinstallazione, tutto in un posto.
 * **Italiano e inglese:** la lingua segue quella del sistema e si può cambiare all'installazione o nelle impostazioni.
 * **Avviso di aggiornamento:** la finestra avvisa quando su GitHub c'è una versione nuova e si aggiorna con un clic.

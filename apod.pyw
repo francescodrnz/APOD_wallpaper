@@ -27,6 +27,8 @@ START_DATE = datetime(1995, 6, 16)
 MIN_LATO_LUNGO = 1280
 # Sfondo preparato in anticipo dal processo --prefetch, pronto per il prossimo cambio
 PREFETCH_DIR = IMAGES_DIR / "prossimo"
+# Data (YYYY-MM-DD) dell'APOD piu' recente gia' usata come sfondo: quella del giorno ha la precedenza finche' non si vede
+APOD_SEEN_FILE = IMAGES_DIR / "apod_del_giorno"
 
 # Una sola sessione: riusa le connessioni HTTPS invece di rifare ogni volta l'handshake
 SESSION = requests.Session()
@@ -95,6 +97,11 @@ def fetch_image(url, screen):
         return img.convert("RGB")
     except:
         return None
+
+def download_wallpaper(url, screen):
+    # Scarica e adatta allo schermo; None se il download o il ridimensionamento falliscono
+    img = fetch_image(url, screen)
+    return smart_resize_wallpaper(img, screen) if img else None
 
 def smart_resize_wallpaper(img, screen):
     # Restituisce l'immagine adattata allo schermo, oppure None in caso di errore
@@ -423,31 +430,55 @@ def find_image(screen):
     apis = [get_apod_data, get_unsplash_image, get_pixabay_image, get_nasa_image_library, get_esa_image,
             get_wikimedia_image, get_bing_image]
     random.shuffle(apis)
-    # Senza questo controllo l'APOD di oggi tornerebbe a ogni cambio, anche nel prefetch subito dopo lo sfondo
     seen = recent_images()
 
     for api in apis:
         for i in range(MAX_RETRIES):
             try:
+                # L'APOD di oggi passa da todays_apod: qui solo date d'archivio
                 if api == get_apod_data:
-                    date = random_date(START_DATE, datetime.now() - timedelta(days=1)) if i > 0 else None
-                    data = api(date)
+                    data = api(random_date(START_DATE, datetime.now() - timedelta(days=1)))
                 else:
                     data = api()
                 if not data: continue
                 if (str(data['title']).strip(), str(data['date']).strip()) in seen: continue
 
-                img = fetch_image(data['url'], screen)
-                wallpaper = smart_resize_wallpaper(img, screen) if img else None
+                wallpaper = download_wallpaper(data['url'], screen)
                 if wallpaper: return data, wallpaper
             except: pass
     return None, None
 
-def prepare_image(folder):
-    # Cerca, scarica e adatta un'immagine, poi la salva in folder insieme al .txt.
+def todays_apod():
+    # Metadati dell'APOD del giorno se non e' ancora stata sfondo, altrimenti None (anche se e' un video)
+    try: last = APOD_SEEN_FILE.read_text(encoding="utf-8").strip()
+    except OSError: last = ""
+    # La data APOD (ora di New York) non supera quella locale in Europa: oggi gia' vista, niente richiesta
+    if last >= datetime.now().strftime('%Y-%m-%d'): return None
+    data = get_apod_data()
+    if not data or str(data['date']) <= last: return None
+    # Gia' in cache o pronta in prossimo/: arrivera' comunque come sfondo
+    if (str(data['title']).strip(), str(data['date']).strip()) in recent_images(): return None
+    return data
+
+def mark_apod_seen(img_path):
+    # Annota la data se lo sfondo e' un'APOD piu' recente di quella annotata (quelle d'archivio sono piu' vecchie)
+    info = read_info(img_path.with_suffix('.txt'))
+    if info["source"] != "NASA APOD" or not info["date"]: return
+    try: last = APOD_SEEN_FILE.read_text(encoding="utf-8").strip()
+    except OSError: last = ""
+    if info["date"] > last:
+        try: APOD_SEEN_FILE.write_text(info["date"], encoding="utf-8")
+        except OSError: pass
+
+def prepare_image(folder, data=None):
+    # Cerca (o, con data, usa quella), scarica e adatta un'immagine, poi la salva in folder insieme al .txt.
     # Il .jpg viene scritto per ultimo e con un rename: se esiste, la coppia e' completa.
-    data, wallpaper = find_image(screen_size())
-    if not data: return None
+    if data:
+        wallpaper = download_wallpaper(data['url'], screen_size())
+        if not wallpaper: return None
+    else:
+        data, wallpaper = find_image(screen_size())
+        if not data: return None
 
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     src = data['source'].lower().replace(' ', '_')
@@ -527,12 +558,15 @@ def main():
         return
 
     current_wp = get_current_wallpaper()
-    img_path = take_prefetched() or prepare_image(IMAGES_DIR)
+    # L'APOD del giorno passa davanti allo sfondo gia' pronto, che resta per il cambio successivo
+    apod = todays_apod()
+    img_path = (apod and prepare_image(IMAGES_DIR, apod)) or take_prefetched() or prepare_image(IMAGES_DIR)
     # Il prossimo sfondo si prepara in un processo separato, cosi' chi aspetta questo non attende
     start_prefetch()
     if not img_path: return
 
     if set_wallpaper(img_path):
+        mark_apod_seen(img_path)
         update_windows_accent(img_path)
         cleanup(IMAGES_DIR, current_wp, img_path, img_path.with_suffix('.txt'))
 
