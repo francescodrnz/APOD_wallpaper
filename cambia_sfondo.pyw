@@ -22,6 +22,8 @@ FONT = ("Segoe UI", 9)
 
 def make_modal(win):
     if IS_WINDOWS:
+        # Legata alla finestra principale, che e' sempre in primo piano e altrimenti la coprirebbe
+        win.transient(win.master)
         win.grab_set()
         return
     # Su Linux la finestra diventa visibile solo quando il window manager la mostra:
@@ -38,11 +40,14 @@ def setup_window(root):
         # Su Linux il font e' piu' alto e con l'altezza predefinita le righe delle tabelle tagliavano le lettere
         ttk.Style(root).configure("Treeview", rowheight=tkfont.nametofont("TkDefaultFont").metrics("linespace") + 4)
 
-def center(win):
-    # Centra la finestra lasciandole la misura richiesta dai widget
-    win.update_idletasks()
-    w, h = win.winfo_reqwidth(), win.winfo_reqheight()
-    win.geometry(f"+{(win.winfo_screenwidth() - w) // 2}+{(win.winfo_screenheight() - h) // 2}")
+def center(win, size=None):
+    # Centra la finestra: con size (larghezza, altezza) le da' quella misura, altrimenti le lascia quella richiesta dai widget
+    if not size:
+        win.update_idletasks()
+    # Con size la finestra non viene ancora mostrata: su Windows transient (in make_modal) vale solo se arriva prima
+    w, h = size or (win.winfo_reqwidth(), win.winfo_reqheight())
+    pos = f"+{(win.winfo_screenwidth() - w) // 2}+{(win.winfo_screenheight() - h) // 2}"
+    win.geometry(f"{w}x{h}{pos}" if size else pos)
 
 def run_in_background(root, func, callback):
     # Esegue func in un thread (rete, download) e passa (risultato, eccezione) a callback
@@ -510,7 +515,7 @@ def main():
         if choice == "open_txt":
             info_win = tk.Toplevel(root)
             info_win.title(tr("Informazioni Sfondo"))
-            info_win.geometry("500x400")
+            center(info_win, (500, 400))
             make_modal(info_win)
             
             btn_close = tk.Button(info_win, text=tr("Chiudi"), command=info_win.destroy, width=15)
@@ -563,7 +568,7 @@ def main():
 
         manage_win = tk.Toplevel(root)
         manage_win.title(tr("Gestione & Statistiche"))
-        manage_win.geometry("600x450")
+        center(manage_win, (600, 450))
         make_modal(manage_win)
 
         lbl_info = tk.Label(manage_win, text=tr("Gestisci le categorie e visualizza i voti (🔴 = Esclusa in automatico)"), pady=10)
