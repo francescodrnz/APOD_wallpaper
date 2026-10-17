@@ -242,18 +242,28 @@ def get_pixabay_image():
 
 # Le foto della sede (HQ) e del Kennedy (KSC) sono quasi tutte di eventi, conferenze e satelliti in hangar
 NASA_EXCLUDED_CENTERS = {"HQ", "KSC"}
-# Negli altri centri le stesse foto si riconoscono da titolo e parole chiave
+# Negli altri centri le stesse foto si riconoscono da titolo e parole chiave: eventi, ritratti, persone,
+# razzi e telescopi in assemblaggio o in prova
 NASA_EXCLUDED_WORDS = re.compile(
-    r"\b(conferences?|ceremon(y|ies)|briefings?|celebrations?|awards?|astronaut candidates?|official portrait|press"
-    r"|media (day|invited|event)|meetings?|visits?|visitors?|processing|symposium|workshops?|forum|panel|interviews?"
-    r"|announcements?|hall of fame|congress|hearing|lectures?|reception|orchestra|students?|employees?|tour|speaks"
-    r"|speech|signing|summit|memorial|gala|exhibits?|exhibition|town hall|training|rehearsal)\b", re.IGNORECASE)
+    r"\b(conferences?|ceremon(y|ies)|briefings?|celebrations?|awards?|candidates?|class|ascan|(?<!self )portraits?"
+    r"|press|media (day|invited|event)|meetings?|visits?|visitors?|processing|symposium|workshops?|forum|panel"
+    r"|interviews?|announcements?|hall of fame|congress|hearing|lectures?|reception|orchestra|students?|child(ren)?"
+    r"|employees?|tours?|speaks|speech|signing|summit|memorial|gala|exhibits?|exhibition|town hall|training"
+    r"|rehearsal|members|dedication|mascot|contest|cake|recognition|selection|swearing|(vice )?president"
+    r"|administrator|senator|congressman|governor|ambassador|secretary|clean ?room|thermal (vacuum )?chamber"
+    r"|core stage|(?<!michoud )assembly|stacking|unbagging|integration|tests?|testing|roll ?out|rolls out|mock ?up"
+    r"|simulator|mission control|control room|loaded)\b", re.IGNORECASE)
+# "NASA astronaut Mike Barratt unpacks...": foto di persone, riconoscibili dal nome con la maiuscola.
+# Le passeggiate spaziali invece restano.
+NASA_PERSON_TITLE = re.compile(r"\b[Aa]stronauts? [A-Z][a-z](?!.*\b(spacewalk|outside)\b)")
 
 def _nasa_wallpaper_item(item):
     meta = item["data"][0]
     if meta.get("center") in NASA_EXCLUDED_CENTERS: return False
-    text = " ".join([str(meta.get("title") or "")] + [str(k) for k in meta.get("keywords", [])])
-    return not NASA_EXCLUDED_WORDS.search(text)
+    title = str(meta.get("title") or "")
+    # Alcuni titoli sono nomi di file ("2021-astronaut-candidate-selection-event_517..._o")
+    text = re.sub(r"[-_]", " ", " ".join([title] + [str(k) for k in meta.get("keywords", [])]))
+    return not NASA_EXCLUDED_WORDS.search(text) and not NASA_PERSON_TITLE.search(title)
 
 def get_nasa_image_library():
     queries = config.get("nasa_categories", ["galaxy"])

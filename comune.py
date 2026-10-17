@@ -85,7 +85,7 @@ DEFAULT_CONFIG = {
     ],
     "nasa_categories": [
         "galaxy", "nebula", "planet", "earth from space", "space station", "mars", "moon", "jupiter", "saturn",
-        "astronaut", "hubble", "james webb", "supernova", "black hole", "solar eclipse", "aurora borealis"
+        "hubble", "james webb", "supernova", "black hole", "solar eclipse", "aurora borealis"
     ]
 }
 
