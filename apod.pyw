@@ -14,7 +14,7 @@ from pathlib import Path
 # comune installa requests e pillow se mancano, quindi va importato prima di loro
 from comune import (IS_WINDOWS, BG_PROCESS, IMAGES_DIR, get_current_wallpaper, set_wallpaper,
                     update_windows_accent, load_stats, is_excluded, write_info, read_info, load_config, unsplash_key, tr,
-                    language, REPO)
+                    pixabay_key, language, REPO)
 
 import requests
 from PIL import Image, ImageFilter, ImageEnhance
@@ -35,6 +35,7 @@ SESSION.headers["User-Agent"] = f"APOD_wallpaper (https://github.com/{REPO})"
 
 config = load_config()
 UNSPLASH_API_KEY = unsplash_key(config)
+PIXABAY_API_KEY = pixabay_key(config)
 
 # --- CORE FUNCTIONS ---
 
@@ -199,6 +200,43 @@ def get_unsplash_image():
             "description": full_desc,
             "date": created_date,
             "source": "Unsplash", "category": theme
+        }
+    except: return None
+
+def get_pixabay_image():
+    # Fonte opzionale come Unsplash, con gli stessi temi (e quindi gli stessi voti)
+    if not PIXABAY_API_KEY: return None
+    valid_themes = get_valid_categories(config.get("unsplash_categories", ["space"]))
+    if not valid_themes: return None
+    theme = random.choice(valid_themes)
+    params = {"key": PIXABAY_API_KEY, "q": theme, "image_type": "photo", "orientation": "horizontal",
+              "min_width": 1920, "safesearch": "true", "editors_choice": "true", "per_page": 100}
+    try:
+        res = SESSION.get("https://pixabay.com/api/", params=params, timeout=TIMEOUT)
+        res.raise_for_status()
+        hits = res.json().get("hits", [])
+        # Le foto scelte dalla redazione sono le migliori, ma per i temi meno comuni possono mancare
+        if not hits:
+            del params["editors_choice"]
+            res = SESSION.get("https://pixabay.com/api/", params=params, timeout=TIMEOUT)
+            res.raise_for_status()
+            hits = res.json().get("hits", [])
+        hits = [h for h in hits if not h.get("isAiGenerated") and not h.get("isLowQuality")]
+        if not hits: return None
+        hit = random.choice(hits)
+
+        # imageURL e fullHDURL arrivano solo con l'accesso completo all'API, che Pixabay concede su richiesta;
+        # con la chiave normale c'e' solo largeImageURL, larga al massimo 1280 px
+        if hit.get("imageURL") and hit.get("imageSize", 0) < 30_000_000: url = hit["imageURL"]
+        else: url = hit.get("fullHDURL") or hit["largeImageURL"]
+        # L'API non da' la data di pubblicazione, che pero' e' nel percorso dell'anteprima (/photo/AAAA/MM/GG/)
+        found = re.search(r"/photo/(\d{4})/(\d{2})/(\d{2})/", hit.get("previewURL", ""))
+        tags = hit.get("tags", "")
+        return {
+            "url": url, "title": (hit.get("name") or tags or f"Pixabay {theme}").capitalize(),
+            "description": f"Photo by {hit.get('user', 'Unknown')}.\n{tags}",
+            "date": "-".join(found.groups()) if found else datetime.now().strftime('%Y-%m-%d'),
+            "source": "Pixabay", "category": theme
         }
     except: return None
 
@@ -372,8 +410,8 @@ def recent_images():
 def find_image(screen):
     # Prova le fonti in ordine casuale; un download fallito, un'immagine troppo piccola o gia' in cache
     # contano come tentativo fallito. Restituisce (metadati, immagine adattata) o (None, None).
-    apis = [get_apod_data, get_unsplash_image, get_nasa_image_library, get_esa_image, get_wikimedia_image,
-            get_bing_image]
+    apis = [get_apod_data, get_unsplash_image, get_pixabay_image, get_nasa_image_library, get_esa_image,
+            get_wikimedia_image, get_bing_image]
     random.shuffle(apis)
     # Senza questo controllo l'APOD di oggi tornerebbe a ogni cambio, anche nel prefetch subito dopo lo sfondo
     seen = recent_images()

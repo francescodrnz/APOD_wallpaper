@@ -2,14 +2,14 @@
 
 *[Leggi in italiano](LeggiMi.md)*
 
-Automated wallpaper switcher for Windows 10/11 and Linux (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, Budgie). The same scripts detect the system on their own. Fetches high-res imagery from **NASA**, **ESA (Hubble & Webb)**, **Wikimedia Commons**, **Bing** and **Unsplash**, adapts them to your screen using **Ambient Blur** (no black bars), and dynamically syncs the **Windows UI accent color** (Windows only).
+Automated wallpaper switcher for Windows 10/11 and Linux (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, Budgie). The same scripts detect the system on their own. Fetches high-res imagery from **NASA**, **ESA (Hubble & Webb)**, **Wikimedia Commons**, **Bing**, **Unsplash** and **Pixabay**, adapts them to your screen using **Ambient Blur** (no black bars), and dynamically syncs the **Windows UI accent color** (Windows only).
 
 ## Key Features
 * **One-Line Install:** no git, no manual setup. The installer also installs Python (Windows) or the dependencies (Linux) when they are missing.
 * **Smart Resize:** Automatically applies a cinematic "Ambient Blur" to fill the screen, preserving the original aspect ratio without cropping. The wallpaper fit mode is set automatically.
 * **DWM Color Sync:** Extracts the dominant color from the wallpaper and applies it to the Windows interface (Dark Mode safe). Can be turned off in the settings.
-* **Multi-Source:** Cycles through NASA APOD, NASA Library (without event and conference photos), ESA Hubble and Webb pictures of the week/month, the Wikimedia Commons picture of the day, the Bing image of the day and Unsplash (Nature/Space).
-* **Settings Window:** language, auto-start, shortcuts, Unsplash key, folders, updates and uninstall, all in one place.
+* **Multi-Source:** Cycles through NASA APOD, NASA Library (without event and conference photos), ESA Hubble and Webb pictures of the week/month, the Wikimedia Commons picture of the day, the Bing image of the day, Unsplash and Pixabay (Nature/Space).
+* **Settings Window:** language, auto-start, shortcuts, Unsplash and Pixabay keys, folders, updates and uninstall, all in one place.
 * **English and Italian:** the language follows the system and can be changed at install time or in the settings.
 * **Update Notice:** the window tells you when a new version is on GitHub and updates with one click.
 * **Instant Change:** After each change, the next wallpaper is downloaded and prepared in the background (`apod_images/prossimo/`), so the next change is almost instant.
@@ -32,7 +32,7 @@ The installer downloads the program, installs what is missing and opens the setu
 * change wallpaper at every login;
 * shortcut to the rating window in the Start menu / applications menu;
 * shortcut on the desktop;
-* Unsplash key (optional).
+* Unsplash and Pixabay keys (optional).
 
 The first wallpaper is downloaded right away. Everything can be changed later from **⚙️ Settings** in the rating window.
 
@@ -47,6 +47,7 @@ The program lives in `%LOCALAPPDATA%\APOD_wallpaper` (Windows) or `~/.local/shar
 ## API Keys
 * **NASA (APOD & Image Library), ESA Hubble & Webb, Wikimedia Commons, Bing:** no key needed.
 * **Unsplash (optional):** without a key the script uses all the other sources. To add Unsplash images, get a free key at [unsplash.com/developers](https://unsplash.com/developers) (Register -> Create a new App -> Copy Access Key) and paste it in **⚙️ Settings**.
+* **Pixabay (optional):** works the same way. Sign up at [pixabay.com](https://pixabay.com/), copy the key shown on the [API page](https://pixabay.com/api/docs/) and paste it in **⚙️ Settings**. With a standard key Pixabay only provides images up to 1280 px wide, which look a bit soft on large screens; full resolution needs [full API access](https://pixabay.com/api/docs/), which Pixabay grants on request.
 
 ## UI & Statistics (`cambia_sfondo.pyw`)
 Open **Change Wallpaper** (**Cambia Sfondo** in Italian) from the Start menu, the applications menu or the desktop shortcut.

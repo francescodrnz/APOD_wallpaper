@@ -2,14 +2,14 @@
 
 *[Read in English](ReadMe.md)*
 
-Cambia-sfondo automatico per Windows 10/11 e Linux (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, Budgie). Gli stessi script riconoscono da soli il sistema. Scarica immagini ad alta risoluzione da **NASA**, **ESA (Hubble e Webb)**, **Wikimedia Commons**, **Bing** e **Unsplash**, le adatta allo schermo con un **Ambient Blur** (niente bande nere) e sincronizza il **colore d'accento di Windows** (solo Windows).
+Cambia-sfondo automatico per Windows 10/11 e Linux (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, Budgie). Gli stessi script riconoscono da soli il sistema. Scarica immagini ad alta risoluzione da **NASA**, **ESA (Hubble e Webb)**, **Wikimedia Commons**, **Bing**, **Unsplash** e **Pixabay**, le adatta allo schermo con un **Ambient Blur** (niente bande nere) e sincronizza il **colore d'accento di Windows** (solo Windows).
 
 ## Funzioni principali
 * **Installazione con una riga:** niente git, niente configurazione a mano. L'installer installa anche Python (Windows) o le dipendenze (Linux) se mancano.
 * **Ridimensionamento intelligente:** riempie lo schermo con un "Ambient Blur" in stile cinematografico, mantenendo le proporzioni originali senza ritagliare. La modalità di adattamento dello sfondo viene impostata da sola.
 * **Colore d'accento:** prende il colore dominante dello sfondo e lo applica all'interfaccia di Windows (compatibile con il tema scuro). Si può disattivare nelle impostazioni.
-* **Più fonti:** alterna NASA APOD, NASA Image Library (senza le foto di eventi e conferenze), le foto della settimana e del mese di ESA Hubble e Webb, la foto del giorno di Wikimedia Commons, l'immagine del giorno di Bing e Unsplash (natura/spazio).
-* **Finestra delle impostazioni:** lingua, avvio automatico, collegamenti, chiave Unsplash, cartelle, aggiornamenti e disinstallazione, tutto in un posto.
+* **Più fonti:** alterna NASA APOD, NASA Image Library (senza le foto di eventi e conferenze), le foto della settimana e del mese di ESA Hubble e Webb, la foto del giorno di Wikimedia Commons, l'immagine del giorno di Bing, Unsplash e Pixabay (natura/spazio).
+* **Finestra delle impostazioni:** lingua, avvio automatico, collegamenti, chiavi Unsplash e Pixabay, cartelle, aggiornamenti e disinstallazione, tutto in un posto.
 * **Italiano e inglese:** la lingua segue quella del sistema e si può cambiare all'installazione o nelle impostazioni.
 * **Avviso di aggiornamento:** la finestra avvisa quando su GitHub c'è una versione nuova e si aggiorna con un clic.
 * **Cambio istantaneo:** dopo ogni cambio, lo sfondo successivo viene scaricato e preparato in background (`apod_images/prossimo/`), quindi il cambio seguente è quasi immediato.
@@ -32,7 +32,7 @@ L'installer scarica il programma, installa quello che manca e apre la finestra d
 * cambio dello sfondo a ogni accesso;
 * collegamento alla finestra di valutazione nel menu Start / menu delle applicazioni;
 * collegamento sul desktop;
-* chiave Unsplash (facoltativa).
+* chiavi Unsplash e Pixabay (facoltative).
 
 Il primo sfondo viene scaricato subito. Tutto si può cambiare in seguito da **⚙️ Impostazioni** nella finestra di valutazione.
 
@@ -47,6 +47,7 @@ Il programma sta in `%LOCALAPPDATA%\APOD_wallpaper` (Windows) o `~/.local/share/
 ## Chiavi API
 * **NASA (APOD e Image Library), ESA Hubble e Webb, Wikimedia Commons, Bing:** non serve nessuna chiave.
 * **Unsplash (facoltativa):** senza chiave lo script usa tutte le altre fonti. Per avere anche le immagini di Unsplash, prendi una chiave gratuita su [unsplash.com/developers](https://unsplash.com/developers) (Register -> Create a new App -> copia la Access Key) e incollala in **⚙️ Impostazioni**.
+* **Pixabay (facoltativa):** funziona allo stesso modo. Registrati su [pixabay.com](https://pixabay.com/), copia la chiave che compare nella [pagina dell'API](https://pixabay.com/api/docs/) e incollala in **⚙️ Impostazioni**. Con la chiave normale Pixabay dà immagini larghe al massimo 1280 px, un po' morbide sugli schermi grandi; per la risoluzione piena serve l'[accesso completo all'API](https://pixabay.com/api/docs/), che Pixabay concede su richiesta.
 
 ## Finestra e statistiche (`cambia_sfondo.pyw`)
 Apri **Cambia Sfondo** (**Change Wallpaper** in inglese) dal menu Start, dal menu delle applicazioni o dal collegamento sul desktop.

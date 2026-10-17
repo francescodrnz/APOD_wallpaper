@@ -75,6 +75,7 @@ def system_language():
 UNSPLASH_KEY_PLACEHOLDER = "your_unsplash_key_here"
 DEFAULT_CONFIG = {
     "UNSPLASH_API_KEY": UNSPLASH_KEY_PLACEHOLDER,
+    "PIXABAY_API_KEY": "",
     "lingua": system_language(),
     "colore_accento": True,
     "unsplash_categories": [
@@ -137,7 +138,7 @@ def tr(text, **values):
     return text.format(**values) if values else text
 
 def load_config():
-    # Al primo avvio crea config.json in silenzio: la chiave Unsplash e' facoltativa
+    # Al primo avvio crea config.json in silenzio: le chiavi Unsplash e Pixabay sono facoltative
     # e si inserisce dalla finestra Impostazioni
     if not CONFIG_FILE.exists():
         if not save_config(DEFAULT_CONFIG):
@@ -163,6 +164,10 @@ def unsplash_key(config):
     # Chiave assente o ancora segnaposto: Unsplash viene saltato e restano le altre fonti
     key = (config.get("UNSPLASH_API_KEY") or "").strip()
     return "" if key == UNSPLASH_KEY_PLACEHOLDER or "INSERISCI" in key else key
+
+def pixabay_key(config):
+    # Chiave vuota: Pixabay viene saltato
+    return (config.get("PIXABAY_API_KEY") or "").strip()
 
 # --- SFONDO E COLORE D'ACCENTO ---
 SPI_GETDESKWALLPAPER = 0x0073

@@ -13,7 +13,7 @@ from comune import (IS_WINDOWS, BG_PROCESS, BASE_DIR, CONFIG_FILE, STATS_FILE, I
                     UI_SCRIPT, ICON_PNG, UNSPLASH_KEY_PLACEHOLDER, DEFAULT_CONFIG, show_popup, read_config,
                     get_current_wallpaper, set_wallpaper,
                     update_windows_accent, load_stats, is_excluded, read_info, mark_rated, list_history,
-                    current_index, load_config, save_config, unsplash_key, autostart_enabled, set_autostart,
+                    current_index, load_config, save_config, unsplash_key, pixabay_key, autostart_enabled, set_autostart,
                     shortcut_exists, set_shortcuts, open_path, is_install_dir, uninstall, local_version,
                     check_update, apply_update, find_old_install, import_old_install, LINGUE, language,
                     set_language, system_language, tr)
@@ -138,7 +138,7 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
             return
         set_language(v_lang.get())
         current = {"auto": v_auto.get(), "menu": v_menu.get(), "desk": v_desk.get(),
-                   "key": entry_key.get(), "accent": v_accent.get()}
+                   "key": entry_key.get(), "pixabay": entry_pixabay.get(), "accent": v_accent.get()}
         # Dopo il clic: il pulsante premuto viene distrutto insieme al resto della finestra
         def redo():
             for child in win.winfo_children():
@@ -165,15 +165,25 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
         tk.Checkbutton(f, text=text, variable=var, font=FONT).pack(anchor=tk.W)
 
     f = section(tr("Fonti"))
-    tk.Label(f, text=tr("Chiave Unsplash (facoltativa: senza, si usano solo le altre fonti)"),
+    tk.Label(f, text=tr("Unsplash e Pixabay chiedono una chiave gratuita (facoltativa: senza, si usano solo le altre fonti)"),
              font=FONT, justify=tk.LEFT, wraplength=480).pack(anchor=tk.W)
-    entry_key = tk.Entry(f, width=48, font=FONT)
-    entry_key.insert(0, initial("key", lambda: unsplash_key(cfg)))
-    entry_key.pack(fill=tk.X, pady=2)
-    link = tk.Label(f, text=tr("Ottieni una chiave gratuita (Register → New Application → Access Key)"),
-                    fg="blue", cursor="hand2", font=("Segoe UI", 9, "underline"))
-    link.pack(anchor=tk.W)
-    link.bind("<Button-1>", lambda e: webbrowser.open("https://unsplash.com/developers"))
+
+    def key_field(name, value, help_text, url):
+        tk.Label(f, text=name, font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(4, 0))
+        entry = tk.Entry(f, width=48, font=FONT)
+        entry.insert(0, value)
+        entry.pack(fill=tk.X, pady=2)
+        link = tk.Label(f, text=help_text, fg="blue", cursor="hand2", font=("Segoe UI", 9, "underline"))
+        link.pack(anchor=tk.W)
+        link.bind("<Button-1>", lambda e: webbrowser.open(url))
+        return entry
+
+    entry_key = key_field("Unsplash", initial("key", lambda: unsplash_key(cfg)),
+                          tr("Ottieni una chiave gratuita (Register → New Application → Access Key)"),
+                          "https://unsplash.com/developers")
+    entry_pixabay = key_field("Pixabay", initial("pixabay", lambda: pixabay_key(cfg)),
+                              tr("Ottieni una chiave gratuita (registrati, poi la chiave è nella pagina dell'API)"),
+                              "https://pixabay.com/api/docs/")
 
     v_accent = tk.BooleanVar(win, initial("accent", lambda: cfg.get("colore_accento", True)))
     if IS_WINDOWS:
@@ -231,6 +241,7 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
         # Su Windows ogni collegamento passa da PowerShell e ci mette qualche secondo: il lavoro va in un thread,
         # intanto la finestra dice cosa sta facendo e non accetta altri clic
         key, accent, auto = entry_key.get().strip() or UNSPLASH_KEY_PLACEHOLDER, v_accent.get(), v_auto.get()
+        pixabay = entry_pixabay.get().strip()
         lang = v_lang.get()
         shortcuts = {"menu": v_menu.get(), "desktop": v_desk.get()}
         # I nomi dei collegamenti dipendono dalla lingua
@@ -245,6 +256,7 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
             # Senza config.json si parte da quello mostrato, che contiene anche le categorie della vecchia installazione
             new_cfg = load_config() if CONFIG_FILE.exists() else dict(cfg)
             new_cfg["UNSPLASH_API_KEY"] = key
+            new_cfg["PIXABAY_API_KEY"] = pixabay
             new_cfg["lingua"] = lang
             new_cfg["colore_accento"] = accent
             # Tutto viene riscritto anche se non e' cambiato: cosi' i collegamenti puntano sempre a questa cartella
@@ -633,7 +645,7 @@ def main():
             
             return tree
 
-        tree_u = setup_section(frames_container, tr("Temi Unsplash"), cfg.get("unsplash_categories", []))
+        tree_u = setup_section(frames_container, tr("Temi Unsplash e Pixabay"), cfg.get("unsplash_categories", []))
         tree_n = setup_section(frames_container, tr("Ricerche NASA"), cfg.get("nasa_categories", []))
 
         def save_and_close():

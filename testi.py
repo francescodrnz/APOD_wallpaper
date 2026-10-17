@@ -47,8 +47,10 @@ EN = {
     "Collegamento a questa finestra nel {menu}": "Shortcut to this window in the {menu}",
     "Collegamento a questa finestra sul desktop": "Shortcut to this window on the desktop",
     "Fonti": "Sources",
-    "Chiave Unsplash (facoltativa: senza, si usano solo le altre fonti)":
-        "Unsplash key (optional: without it, only the other sources are used)",
+    "Unsplash e Pixabay chiedono una chiave gratuita (facoltativa: senza, si usano solo le altre fonti)":
+        "Unsplash and Pixabay need a free key (optional: without it, only the other sources are used)",
+    "Ottieni una chiave gratuita (registrati, poi la chiave è nella pagina dell'API)":
+        "Get a free key (sign up, then the key is on the API page)",
     "Ottieni una chiave gratuita (Register → New Application → Access Key)":
         "Get a free key (Register → New Application → Access Key)",
     "Aspetto": "Appearance",
@@ -127,7 +129,7 @@ EN = {
     "Categoria": "Category",
     "+ Aggiungi": "+ Add",
     "- Rimuovi": "- Remove",
-    "Temi Unsplash": "Unsplash Themes",
+    "Temi Unsplash e Pixabay": "Unsplash & Pixabay Themes",
     "Ricerche NASA": "NASA Queries",
     "Salva e Chiudi": "Save and Close",
 }
