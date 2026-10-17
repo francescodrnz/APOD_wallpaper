@@ -79,6 +79,7 @@ On Linux install the dependencies first:
 sudo apt install python3-requests python3-pil python3-tk            # Debian, Ubuntu, Mint
 sudo dnf install python3-requests python3-pillow python3-tkinter    # Fedora
 sudo pacman -S python-requests python-pillow tk                     # Arch, Manjaro
+sudo zypper install python3-requests python3-Pillow python3-tk      # openSUSE
 ```
 Auto-start and shortcuts then point to the clone, and **Aggiorna** runs `git pull`.
 
