@@ -23,3 +23,16 @@ Tutti i punti di `docs/istruzioni-windows.md` sono OK su Windows (dettagli nella
 ### Decisioni da prendere
 
 - Bug 2: la finestra principale deve restare `-topmost`? Copre tutte le finestre che non lo sono, compresa quella dell'installer. Se resta, va messo `-topmost` anche alla finestra di installazione (proposta sopra).
+
+## Terza verifica, 17/10/2026, dal commit `8666067`
+
+Tutti i punti di `docs/istruzioni-windows.md` sono OK su Windows dopo due correzioni (dettagli in `docs/verifica-windows.md`). Da qui non c'è niente da decidere: resta solo da ricontrollare su Linux che le modifiche a `comune.py` non abbiano cambiato niente.
+
+### Modifiche a codice condiviso (`comune.py`)
+
+- **Nuova funzione `_unlink(path)`, usata in `set_shortcuts` al posto di `path.unlink(missing_ok=True)`.** Su Windows riprova per circa 5 s se riceve `PermissionError`; su Linux rilancia subito l'eccezione, come prima. Nuovo `import time` in cima al file.
+- **`set_shortcuts`, ramo Windows**: il `.lnk` vecchio viene cancellato prima di PowerShell e l'esito è solo `path.exists()`, non più il codice di uscita. Il ramo Linux (`_write_desktop_file`) non è stato toccato.
+
+### Da ricontrollare su Linux
+
+- Con `HOME` temporaneo: `set_shortcuts({"menu": True, "desktop": True})` e poi `{"menu": False, "desktop": False}` creano e tolgono ancora i due `.desktop`, e "Disinstalla" li toglie entrambi.
