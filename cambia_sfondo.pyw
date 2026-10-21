@@ -138,7 +138,7 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
         if v_lang.get() == language():
             return
         set_language(v_lang.get())
-        current = {"auto": v_auto.get(), "cycle": v_cycle.get(), "cycle_min": entry_cycle.get(),
+        current = {"auto": v_auto.get(), "cycle": v_cycle.get(), "cycle_min": v_cycle_min.get(),
                    "menu": v_menu.get(), "desk": v_desk.get(),
                    "key": entry_key.get(), "pixabay": entry_pixabay.get(), "accent": v_accent.get()}
         # Dopo il clic: il pulsante premuto viene distrutto insieme al resto della finestra
@@ -167,9 +167,10 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
     row = tk.Frame(f)
     row.pack(anchor=tk.W)
     tk.Checkbutton(row, text=tr("Cambia sfondo da solo ogni"), variable=v_cycle, font=FONT).pack(side=tk.LEFT)
-    entry_cycle = tk.Entry(row, width=5, font=FONT, justify=tk.RIGHT)
-    entry_cycle.insert(0, initial("cycle_min", lambda: str(cfg.get("cambio_automatico_minuti", ""))))
-    entry_cycle.pack(side=tk.LEFT)
+    v_cycle_min = tk.StringVar(win, initial("cycle_min", lambda: str(cfg.get("cambio_automatico_minuti", ""))))
+    tk.Entry(row, textvariable=v_cycle_min, width=5, font=FONT, justify=tk.RIGHT).pack(side=tk.LEFT)
+    # Scrivere i minuti vuol dire volere il cambio automatico: la casella si seleziona da sola
+    v_cycle_min.trace_add("write", lambda *_: v_cycle.set(True))
     tk.Label(row, text=tr("minuti"), font=FONT).pack(side=tk.LEFT, padx=(4, 0))
     tk.Label(f, text=tr("Almeno {n} minuti; aspetta se il PC è bloccato o inattivo", n=MIN_CYCLE_MINUTES),
              fg="gray", font=("Segoe UI", 8)).pack(anchor=tk.W, padx=(22, 0))
@@ -254,7 +255,7 @@ def build_settings(root, win, on_close, intro=None, first_install=False, old_con
         # Su Windows ogni collegamento passa da PowerShell e ci mette qualche secondo: il lavoro va in un thread,
         # intanto la finestra dice cosa sta facendo e non accetta altri clic
         cycle = v_cycle.get()
-        try: minutes = int(entry_cycle.get().strip())
+        try: minutes = int(v_cycle_min.get().strip())
         except ValueError: minutes = 0
         if minutes < MIN_CYCLE_MINUTES:
             if cycle:
