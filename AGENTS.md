@@ -42,6 +42,7 @@ Prefetch: con `--prefetch` lo script prepara un'immagine in `apod_images/prossim
 - **Quando cambia:** `set_wallpaper` aggiorna la mtime di `apod_images/ultimo_cambio` (fuori dai glob `wallpaper_*`) a ogni cambio riuscito, anche a mano o con Precedente/Successivo. Il ciclo cambia quando sono passati N minuti da `max(avvio del ciclo, ultimo_cambio)`, misurati con `time.time()` a ogni giro, così dopo una sospensione cambia una volta sola. Un cambio fallito non tocca `ultimo_cambio`: il ciclo riprova dopo `CYCLE_RETRY` (5 min).
 - **Inattività:** se è ora ma `user_inactive()` è vero (schermo bloccato o nessun input da `IDLE_MINUTES`, 10 min) il ciclo aspetta; cambia al primo controllo dopo il ritorno dell'utente. Se non si può sapere, l'utente conta come presente.
 - **Aggiornamenti:** se cambia la mtime di `apod.pyw` o `comune.py` il ciclo rilascia il blocco, ne avvia uno nuovo ed esce.
+- Nelle Impostazioni scrivere i minuti seleziona da solo la casella del ciclo (`StringVar` con `trace_add("write")`). La variabile va letta da `save` e da `change_language`: se nessuna funzione la tiene, alla fine di `build_settings` il garbage collector la elimina e Tk toglie il trace insieme a lei.
 - La finestra principale controlla `ultimo_cambio` ogni 5 s e si aggiorna se lo sfondo è cambiato da fuori.
 
 ## Windows e Linux
