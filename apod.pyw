@@ -16,7 +16,7 @@ from comune import (IS_WINDOWS, BG_PROCESS, IMAGES_DIR, get_current_wallpaper, s
                     update_windows_accent, load_stats, is_excluded, write_info, read_info, load_config, unsplash_key, tr,
                     pixabay_key, language, REPO, read_config, DEFAULT_CONFIG, LAST_CHANGE_FILE, CYCLE_LOCK,
                     MIN_CYCLE_MINUTES, cycle_enabled, start_cycle, user_inactive, pythonw_path,
-                    smart_resize_wallpaper, monitors, save_variants, SCREENS_DIR)
+                    smart_resize_wallpaper, monitors, save_variants, SCREENS_DIR, same_ratio)
 
 import requests
 from PIL import Image
@@ -470,7 +470,19 @@ def _mtime(path):
 
 def take_prefetched():
     # Sposta nello storico lo sfondo preparato in anticipo, se c'e'
+    screen = screen_size()
     for jpg in sorted(PREFETCH_DIR.glob("wallpaper_*.jpg"), key=_mtime):
+        # Preparato per uno schermo con altre proporzioni (es. con il monitor principale spento):
+        # meglio rifarlo dall'originale che ricavarlo da un file gia' adattato
+        try:
+            with Image.open(jpg) as img:
+                wrong = not same_ratio(img.size, screen)
+        except: wrong = True
+        if wrong:
+            for p in (jpg, jpg.with_suffix('.txt')):
+                try: p.unlink()
+                except OSError: pass
+            continue
         dest = IMAGES_DIR / jpg.name
         try:
             os.replace(jpg, dest)

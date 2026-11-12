@@ -318,9 +318,21 @@ def _is_primary(rect):
 def variant_path(img_path, size):
     return SCREENS_DIR / f"{Path(img_path).stem}_{size[0]}x{size[1]}.jpg"
 
+def main_file(path):
+    # Una versione per uno schermo (schermi/<nome>_<L>x<A>.jpg) rimanda al file principale in apod_images
+    if path is None: return None
+    path = Path(path)
+    found = re.fullmatch(r"(wallpaper_.+)_\d+x\d+", path.stem)
+    if path.parent.name.lower() == SCREENS_DIR.name and found:
+        main = IMAGES_DIR / f"{found.group(1)}.jpg"
+        if main.exists(): return main
+    return path
+
 def save_variants(img_path, source=None, screens=None):
-    # Crea le versioni dello sfondo per gli schermi secondari con proporzioni diverse dal file principale
-    # (gia' adattato al primario). source e' l'immagine originale, se e' ancora in memoria; altrimenti
+    # Crea le versioni dello sfondo per gli schermi con proporzioni diverse dal file principale.
+    # Di solito il principale e' gia' adattato al primario, ma non sempre: se e' stato preparato quando
+    # era acceso un altro schermo (es. il prefetch con il monitor principale spento), anche il primario
+    # ha bisogno della sua versione. source e' l'immagine originale, se e' ancora in memoria; altrimenti
     # si parte dal file principale. Restituisce {id del monitor: percorso} per gli schermi che ne hanno una.
     result = {}
     screens = monitors() if screens is None else screens
@@ -331,7 +343,7 @@ def save_variants(img_path, source=None, screens=None):
     except: return result
     for mid, rect in screens:
         size = rect[2:]
-        if _is_primary(rect) or same_ratio(main_size, size): continue
+        if same_ratio(main_size, size): continue
         path = variant_path(img_path, size)
         if not path.exists():
             tmp = path.with_suffix(".tmp")
@@ -339,7 +351,7 @@ def save_variants(img_path, source=None, screens=None):
                 if source is None:
                     with Image.open(img_path) as main:
                         source = main.convert("RGB")
-                variant = smart_resize_wallpaper(source, size, MIN_COVER)
+                variant = smart_resize_wallpaper(source, size, 0 if _is_primary(rect) else MIN_COVER)
                 if variant is None: continue
                 SCREENS_DIR.mkdir(parents=True, exist_ok=True)
                 variant.save(tmp, "JPEG", quality=95)
@@ -473,6 +485,10 @@ def get_current_wallpaper():
     if not IS_WINDOWS:
         try: return _linux_get_wallpaper()
         except: return None
+    # Anche il primario puo' avere una versione in schermi/: storico e finestra vogliono il file principale
+    return main_file(_windows_get_wallpaper())
+
+def _windows_get_wallpaper():
     # Con piu' schermi conta lo sfondo del primario: gli altri possono avere una versione adattata
     try:
         with _DesktopWallpaper() as dw:
@@ -517,7 +533,7 @@ def _set_wallpaper(path):
     screens = monitors()
     if len(screens) > 1:
         try:
-            # Ogni schermo con proporzioni diverse dal primario riceve la sua versione; il primario per ultimo,
+            # Ogni schermo con proporzioni diverse dal file principale riceve la sua versione; il primario per ultimo,
             # cosi' il valore Wallpaper del registro resta il suo
             variants = save_variants(path, screens=screens)
             with _DesktopWallpaper() as dw:
