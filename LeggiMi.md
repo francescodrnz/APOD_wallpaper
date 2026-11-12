@@ -7,6 +7,7 @@ Cambia-sfondo automatico per Windows 10/11 e Linux (GNOME, KDE Plasma, XFCE, Cin
 ## Funzioni principali
 * **Installazione con una riga:** niente git, niente configurazione a mano. L'installer installa anche Python (Windows) o le dipendenze (Linux) se mancano.
 * **Ridimensionamento intelligente:** riempie lo schermo con un "Ambient Blur" in stile cinematografico, mantenendo le proporzioni originali senza ritagliare. La modalità di adattamento dello sfondo viene impostata da sola.
+* **Più schermi (Windows):** ogni schermo riceve la sua versione dello sfondo. Su uno schermo con proporzioni diverse, ad esempio uno verticale accanto al principale orizzontale, l'immagine viene ingrandita fino a coprirne almeno il 60%, i lati si tagliano e il resto è sfocato, invece dello zoom estremo di "Riempi".
 * **Colore d'accento:** prende il colore dominante dello sfondo e lo applica all'interfaccia di Windows (compatibile con il tema scuro). Si può disattivare nelle impostazioni.
 * **Più fonti:** alterna NASA APOD (la foto del giorno diventa sfondo al primo cambio in cui è disponibile, poi l'archivio dal 1995), NASA Image Library (senza le foto di eventi e conferenze), le foto della settimana e del mese di ESA Hubble e Webb, la foto del giorno di Wikimedia Commons, l'immagine del giorno di Bing, Unsplash e Pixabay (natura/spazio).
 * **Cambio automatico:** se vuoi, lo sfondo cambia da solo ogni N minuti (almeno 15). Aspetta mentre il PC è bloccato o inattivo, così non scarica immagini che nessuno vede. Un cambio dura circa 2 secondi, un terzo di secondo di CPU e 1–2 MB di download: anche ogni 15 minuti il consumo in più resta sotto un centesimo di watt.
@@ -72,6 +73,7 @@ Il supporto a KDE Plasma e XFCE non è ancora stato provato su un sistema vero: 
 
 Differenze rispetto a Windows:
 * Il colore d'accento non viene cambiato (su Linux dipende dal tema del desktop).
+* Con più schermi, tutti mostrano la stessa immagine, adattata al principale.
 * Il cambio automatico riconosce il PC inattivo su X11 e su GNOME con Wayland. Negli altri desktop Wayland non può saperlo: si ferma solo a schermo bloccato, se il desktop lo segnala.
 * Il Python di sistema non permette `pip install`, quindi l'installer prende le dipendenze dalla distribuzione (apt, dnf, pacman o zypper) e chiede la password una volta.
 

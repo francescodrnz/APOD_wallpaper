@@ -16,6 +16,7 @@ from urllib.parse import unquote, urlparse
 IS_WINDOWS = sys.platform == "win32"
 if IS_WINDOWS:
     import winreg
+    import ctypes.wintypes
 
 # Opzioni per i processi lanciati in background: su Windows niente finestra di console,
 # su Linux il figlio non viene chiuso insieme al processo che l'ha avviato
@@ -36,7 +37,7 @@ def install_dependencies():
 
 install_dependencies()
 
-from PIL import Image
+from PIL import Image, ImageFilter, ImageEnhance
 
 from testi import EN
 
@@ -47,6 +48,8 @@ STATS_FILE = BASE_DIR / "statistiche.json"
 IMAGES_DIR = BASE_DIR / "apod_images"
 # La mtime dice quando e' stato cambiato lo sfondo l'ultima volta (fuori dai glob wallpaper_*)
 LAST_CHANGE_FILE = IMAGES_DIR / "ultimo_cambio"
+# Versioni dello sfondo per gli schermi secondari con proporzioni diverse (fuori dai glob di apod_images)
+SCREENS_DIR = IMAGES_DIR / "schermi"
 APOD_SCRIPT = BASE_DIR / "apod.pyw"
 UI_SCRIPT = BASE_DIR / "cambia_sfondo.pyw"
 ICON_PNG = BASE_DIR / "icona.png"
@@ -175,6 +178,179 @@ def pixabay_key(config):
 # --- SFONDO E COLORE D'ACCENTO ---
 SPI_GETDESKWALLPAPER = 0x0073
 
+# --- ADATTAMENTO ALLO SCHERMO ---
+# Negli schermi secondari l'immagine occupa almeno questa frazione dello schermo anche se ha
+# proporzioni molto diverse (es. orizzontale su verticale): i lati in piu' si tagliano, il resto e' sfocato
+MIN_COVER = 0.6
+
+def same_ratio(size, screen):
+    return abs(size[0] / size[1] - screen[0] / screen[1]) < 0.05
+
+def smart_resize_wallpaper(img, screen, min_cover=0):
+    # Restituisce l'immagine adattata allo schermo, oppure None in caso di errore.
+    # Con min_cover > 0 l'immagine viene ingrandita (e tagliata) finche' non copre almeno
+    # quella frazione dello schermo nella direzione in cui resterebbe piu' corta.
+    try:
+        screen_w, screen_h = screen
+        orig_w, orig_h = img.size
+
+        # Proporzioni gia' giuste: niente sfocatura, basta non tenerla piu' grande dello schermo
+        if same_ratio(img.size, screen):
+            scale = max(screen_w / orig_w, screen_h / orig_h)
+            if scale >= 1:
+                return img
+            return img.resize((round(orig_w * scale), round(orig_h * scale)), Image.Resampling.LANCZOS)
+
+        canvas = Image.new('RGB', (screen_w, screen_h))
+
+        # Estraiamo direttamente il riquadro centrale proporzionale allo schermo
+        scale_fill = max(screen_w / orig_w, screen_h / orig_h)
+        crop_w, crop_h = int(screen_w / scale_fill), int(screen_h / scale_fill)
+        left = (orig_w - crop_w) // 2
+        top = (orig_h - crop_h) // 2
+        bg_layer = img.crop((left, top, left + crop_w, top + crop_h))
+
+        # Riduciamo drasticamente la risoluzione per velocizzare il GaussianBlur
+        tiny_w, tiny_h = max(1, screen_w // 10), max(1, screen_h // 10)
+        bg_layer = bg_layer.resize((tiny_w, tiny_h), Image.Resampling.BILINEAR)
+        bg_layer = bg_layer.filter(ImageFilter.GaussianBlur(radius=5))
+
+        # Riportiamo a grandezza schermo
+        bg_layer = bg_layer.resize((screen_w, screen_h), Image.Resampling.LANCZOS)
+        bg_layer = ImageEnhance.Brightness(bg_layer).enhance(0.6)
+
+        # Primo piano: intero, oppure ingrandito fino a min_cover e tagliato al centro
+        scale_fg = max(min(screen_w / orig_w, screen_h / orig_h), min_cover * scale_fill)
+        part_w, part_h = min(orig_w, screen_w / scale_fg), min(orig_h, screen_h / scale_fg)
+        left, top = (orig_w - part_w) / 2, (orig_h - part_h) / 2
+        fg_w, fg_h = min(screen_w, int(orig_w * scale_fg)), min(screen_h, int(orig_h * scale_fg))
+        fg_layer = img.resize((fg_w, fg_h), Image.Resampling.LANCZOS, box=(left, top, left + part_w, top + part_h))
+
+        canvas.paste(bg_layer, (0, 0))
+        canvas.paste(fg_layer, ((screen_w - fg_w) // 2, (screen_h - fg_h) // 2))
+        return canvas
+    except:
+        return None
+
+# --- PIU' SCHERMI (solo Windows) ---
+# IDesktopWallpaper (Windows 8+) assegna uno sfondo a ogni monitor; SystemParametersInfo ne mette
+# uno solo per tutti, e su uno schermo verticale "Riempi" ingrandirebbe a dismisura un'immagine orizzontale
+DW_CLSID = "{C2CF3110-460E-4fc1-B9D0-8A1C0C9CC4BD}"
+DW_IID = "{B92B56A9-8B55-4E14-9A89-0199BBB6F93B}"
+DWPOS_FILL = 4
+
+class _DesktopWallpaper:
+    # Oggetto COM usato con ctypes; i metodi sono le posizioni nella vtable di IDesktopWallpaper
+    def __enter__(self):
+        ole32 = ctypes.windll.ole32
+        # S_OK o S_FALSE vanno bilanciati da CoUninitialize; un thread gia' MTA (RPC_E_CHANGED_MODE) va bene lo stesso
+        self._uninit = ole32.CoInitializeEx(None, 2) in (0, 1)  # COINIT_APARTMENTTHREADED
+        self.ptr = ctypes.c_void_p()
+        try:
+            clsid, iid = (ctypes.c_byte * 16)(), (ctypes.c_byte * 16)()
+            ole32.CLSIDFromString(DW_CLSID, clsid)
+            ole32.CLSIDFromString(DW_IID, iid)
+            hr = ole32.CoCreateInstance(clsid, None, 5, iid, ctypes.byref(self.ptr))  # CLSCTX_INPROC_SERVER | LOCAL_SERVER
+            if hr != 0 or not self.ptr:
+                raise OSError(hr)
+        except:
+            self.__exit__()
+            raise
+        return self
+
+    def __exit__(self, *exc):
+        if getattr(self, "ptr", None):
+            try: self._call(2)  # Release
+            except OSError: pass
+            self.ptr = None
+        if self._uninit:
+            ctypes.windll.ole32.CoUninitialize()
+
+    def _call(self, index, *args):
+        # Ogni argomento e' (tipo, valore); un HRESULT di errore solleva OSError
+        vtable = ctypes.cast(ctypes.cast(self.ptr, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))
+        func = ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, *(t for t, _ in args))(vtable[index])
+        return func(self.ptr, *(v for _, v in args))
+
+    def _string(self, index, *args):
+        # Metodi che restituiscono una stringa allocata da COM, da liberare con CoTaskMemFree
+        out = ctypes.c_void_p()
+        self._call(index, *args, (ctypes.POINTER(ctypes.c_void_p), ctypes.byref(out)))
+        try: return ctypes.wstring_at(out.value) if out.value else ""
+        finally: ctypes.windll.ole32.CoTaskMemFree(out)
+
+    def monitors(self):
+        # [(id, (sinistra, alto, larghezza, altezza))] dei monitor accesi, in pixel fisici.
+        # Il primario e' quello in (0, 0); i monitor scollegati fanno fallire GetMonitorRECT e si saltano.
+        count = ctypes.c_uint()
+        self._call(6, (ctypes.POINTER(ctypes.c_uint), ctypes.byref(count)))  # GetMonitorDevicePathCount
+        result = []
+        for i in range(count.value):
+            try:
+                mid = self._string(5, (ctypes.c_uint, i))  # GetMonitorDevicePathAt
+                rect = ctypes.wintypes.RECT()
+                self._call(7, (ctypes.c_wchar_p, mid), (ctypes.POINTER(ctypes.wintypes.RECT), ctypes.byref(rect)))
+                if rect.right > rect.left and rect.bottom > rect.top:
+                    result.append((mid, (rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)))
+            except OSError: pass
+        return result
+
+    def get(self, mid):
+        return self._string(4, (ctypes.c_wchar_p, mid))  # GetWallpaper
+
+    def set(self, mid, path):
+        self._call(3, (ctypes.c_wchar_p, mid), (ctypes.c_wchar_p, str(path)))  # SetWallpaper
+
+    def set_position(self, position):
+        self._call(10, (ctypes.c_int, position))  # SetPosition
+
+def monitors():
+    # Schermi accesi come (id, (sinistra, alto, larghezza, altezza)); [] su Linux o in caso di errore
+    if not IS_WINDOWS: return []
+    try:
+        with _DesktopWallpaper() as dw:
+            return dw.monitors()
+    except: return []
+
+def _is_primary(rect):
+    return rect[:2] == (0, 0)
+
+def variant_path(img_path, size):
+    return SCREENS_DIR / f"{Path(img_path).stem}_{size[0]}x{size[1]}.jpg"
+
+def save_variants(img_path, source=None, screens=None):
+    # Crea le versioni dello sfondo per gli schermi secondari con proporzioni diverse dal file principale
+    # (gia' adattato al primario). source e' l'immagine originale, se e' ancora in memoria; altrimenti
+    # si parte dal file principale. Restituisce {id del monitor: percorso} per gli schermi che ne hanno una.
+    result = {}
+    screens = monitors() if screens is None else screens
+    if len(screens) < 2: return result
+    try:
+        with Image.open(img_path) as main:
+            main_size = main.size
+    except: return result
+    for mid, rect in screens:
+        size = rect[2:]
+        if _is_primary(rect) or same_ratio(main_size, size): continue
+        path = variant_path(img_path, size)
+        if not path.exists():
+            tmp = path.with_suffix(".tmp")
+            try:
+                if source is None:
+                    with Image.open(img_path) as main:
+                        source = main.convert("RGB")
+                variant = smart_resize_wallpaper(source, size, MIN_COVER)
+                if variant is None: continue
+                SCREENS_DIR.mkdir(parents=True, exist_ok=True)
+                variant.save(tmp, "JPEG", quality=95)
+                os.replace(tmp, path)
+            except:
+                try: tmp.unlink()
+                except OSError: pass
+                continue
+        result[mid] = path
+    return result
+
 # --- SFONDO SU LINUX ---
 # Ogni ambiente desktop salva lo sfondo in un posto diverso:
 # - Cinnamon, GNOME (anche Budgie e Unity) e MATE: gsettings
@@ -297,6 +473,15 @@ def get_current_wallpaper():
     if not IS_WINDOWS:
         try: return _linux_get_wallpaper()
         except: return None
+    # Con piu' schermi conta lo sfondo del primario: gli altri possono avere una versione adattata
+    try:
+        with _DesktopWallpaper() as dw:
+            screens = dw.monitors()
+            if len(screens) > 1:
+                path = Path(dw.get(next(mid for mid, rect in screens if _is_primary(rect))))
+                if path.exists():
+                    return path
+    except: pass
     # Fonte primaria: l'API di sistema. Su alcune installazioni Windows il valore
     # nel registro non viene piu' aggiornato e resta fermo a uno sfondo vecchio.
     try:
@@ -329,6 +514,18 @@ def _set_wallpaper(path):
         # absolute() e non resolve(): il percorso deve restare confrontabile con IMAGES_DIR
         try: return _linux_set_wallpaper(Path(path).absolute())
         except: return False
+    screens = monitors()
+    if len(screens) > 1:
+        try:
+            # Ogni schermo con proporzioni diverse dal primario riceve la sua versione; il primario per ultimo,
+            # cosi' il valore Wallpaper del registro resta il suo
+            variants = save_variants(path, screens=screens)
+            with _DesktopWallpaper() as dw:
+                dw.set_position(DWPOS_FILL)
+                for mid, rect in sorted(screens, key=lambda s: _is_primary(s[1])):
+                    dw.set(mid, Path(variants.get(mid, path)).absolute())
+            return True
+        except: pass  # si ripiega sullo stesso sfondo per tutti
     try:
         # Modalita' "Riempi" (WallpaperStyle 10): viene letta dal registro al momento del cambio
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop") as key:

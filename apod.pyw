@@ -15,10 +15,11 @@ from pathlib import Path
 from comune import (IS_WINDOWS, BG_PROCESS, IMAGES_DIR, get_current_wallpaper, set_wallpaper,
                     update_windows_accent, load_stats, is_excluded, write_info, read_info, load_config, unsplash_key, tr,
                     pixabay_key, language, REPO, read_config, DEFAULT_CONFIG, LAST_CHANGE_FILE, CYCLE_LOCK,
-                    MIN_CYCLE_MINUTES, cycle_enabled, start_cycle, user_inactive, pythonw_path)
+                    MIN_CYCLE_MINUTES, cycle_enabled, start_cycle, user_inactive, pythonw_path,
+                    smart_resize_wallpaper, monitors, save_variants, SCREENS_DIR)
 
 import requests
-from PIL import Image, ImageFilter, ImageEnhance
+from PIL import Image
 
 # --- COSTANTI & CONFIGURAZIONE ---
 MAX_RETRIES = 3
@@ -100,50 +101,11 @@ def fetch_image(url, screen):
         return None
 
 def download_wallpaper(url, screen):
-    # Scarica e adatta allo schermo; None se il download o il ridimensionamento falliscono
+    # Scarica e adatta allo schermo: (originale, adattata), oppure None se il download o il ridimensionamento
+    # falliscono. L'originale serve alle versioni per gli schermi secondari.
     img = fetch_image(url, screen)
-    return smart_resize_wallpaper(img, screen) if img else None
-
-def smart_resize_wallpaper(img, screen):
-    # Restituisce l'immagine adattata allo schermo, oppure None in caso di errore
-    try:
-        screen_w, screen_h = screen
-        orig_w, orig_h = img.size
-
-        # Proporzioni gia' giuste: niente sfocatura, basta non tenerla piu' grande dello schermo
-        if abs(orig_w / orig_h - screen_w / screen_h) < 0.05:
-            scale = max(screen_w / orig_w, screen_h / orig_h)
-            if scale >= 1:
-                return img
-            return img.resize((round(orig_w * scale), round(orig_h * scale)), Image.Resampling.LANCZOS)
-
-        canvas = Image.new('RGB', (screen_w, screen_h))
-
-        # Estraiamo direttamente il riquadro centrale proporzionale allo schermo
-        scale = max(screen_w / orig_w, screen_h / orig_h)
-        crop_w, crop_h = int(screen_w / scale), int(screen_h / scale)
-        left = (orig_w - crop_w) // 2
-        top = (orig_h - crop_h) // 2
-        bg_layer = img.crop((left, top, left + crop_w, top + crop_h))
-
-        # Riduciamo drasticamente la risoluzione per velocizzare il GaussianBlur
-        tiny_w, tiny_h = max(1, screen_w // 10), max(1, screen_h // 10)
-        bg_layer = bg_layer.resize((tiny_w, tiny_h), Image.Resampling.BILINEAR)
-        bg_layer = bg_layer.filter(ImageFilter.GaussianBlur(radius=5))
-
-        # Riportiamo a grandezza schermo
-        bg_layer = bg_layer.resize((screen_w, screen_h), Image.Resampling.LANCZOS)
-        bg_layer = ImageEnhance.Brightness(bg_layer).enhance(0.6)
-
-        scale_fit = min(screen_w / orig_w, screen_h / orig_h)
-        fg_w, fg_h = int(orig_w * scale_fit), int(orig_h * scale_fit)
-        fg_layer = img.resize((fg_w, fg_h), Image.Resampling.LANCZOS)
-
-        canvas.paste(bg_layer, (0, 0))
-        canvas.paste(fg_layer, ((screen_w - fg_w) // 2, (screen_h - fg_h) // 2))
-        return canvas
-    except:
-        return None
+    wallpaper = smart_resize_wallpaper(img, screen) if img else None
+    return (img, wallpaper) if wallpaper else None
 
 # --- API FUNCTIONS ---
 
@@ -427,7 +389,7 @@ def recent_images():
 
 def find_image(screen):
     # Prova le fonti in ordine casuale; un download fallito, un'immagine troppo piccola o gia' in cache
-    # contano come tentativo fallito. Restituisce (metadati, immagine adattata) o (None, None).
+    # contano come tentativo fallito. Restituisce (metadati, (originale, adattata)) o (None, None).
     apis = [get_apod_data, get_unsplash_image, get_pixabay_image, get_nasa_image_library, get_esa_image,
             get_wikimedia_image, get_bing_image]
     random.shuffle(apis)
@@ -444,8 +406,8 @@ def find_image(screen):
                 if not data: continue
                 if (str(data['title']).strip(), str(data['date']).strip()) in seen: continue
 
-                wallpaper = download_wallpaper(data['url'], screen)
-                if wallpaper: return data, wallpaper
+                images = download_wallpaper(data['url'], screen)
+                if images: return data, images
             except: pass
     return None, None
 
@@ -475,11 +437,12 @@ def prepare_image(folder, data=None):
     # Cerca (o, con data, usa quella), scarica e adatta un'immagine, poi la salva in folder insieme al .txt.
     # Il .jpg viene scritto per ultimo e con un rename: se esiste, la coppia e' completa.
     if data:
-        wallpaper = download_wallpaper(data['url'], screen_size())
-        if not wallpaper: return None
+        images = download_wallpaper(data['url'], screen_size())
+        if not images: return None
     else:
-        data, wallpaper = find_image(screen_size())
+        data, images = find_image(screen_size())
         if not data: return None
+    original, wallpaper = images
 
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     src = data['source'].lower().replace(' ', '_')
@@ -492,12 +455,14 @@ def prepare_image(folder, data=None):
     try:
         wallpaper.save(tmp_path, "JPEG", quality=95)
         os.replace(tmp_path, img_path)
-        return img_path
     except:
         for p in (tmp_path, txt_path):
             try: p.unlink()
             except: pass
         return None
+    # Dopo il .jpg perche' sono facoltative: se mancano, set_wallpaper le ricava dal file principale
+    save_variants(img_path, original)
+    return img_path
 
 def _mtime(path):
     try: return path.stat().st_mtime
@@ -605,6 +570,14 @@ def cleanup(folder, current, new_img, new_txt):
         if f not in keep and len(keep) < 12:
              keep.add(f)
         elif f not in keep:
+            try: f.unlink()
+            except: pass
+
+    # Versioni per gli schermi secondari (nome: <immagine>_<larghezza>x<altezza>) rimaste senza immagine
+    for f in SCREENS_DIR.glob("wallpaper_*"):
+        base = f.stem.rsplit("_", 1)[0] + ".jpg"
+        orphan = not (folder / base).exists() and not (PREFETCH_DIR / base).exists()
+        if (orphan and f.suffix == ".jpg") or (f.suffix == ".tmp" and time.time() - _mtime(f) > 3600):
             try: f.unlink()
             except: pass
 

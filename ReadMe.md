@@ -7,6 +7,7 @@ Automated wallpaper switcher for Windows 10/11 and Linux (GNOME, KDE Plasma, XFC
 ## Key Features
 * **One-Line Install:** no git, no manual setup. The installer also installs Python (Windows) or the dependencies (Linux) when they are missing.
 * **Smart Resize:** Automatically applies a cinematic "Ambient Blur" to fill the screen, preserving the original aspect ratio without cropping. The wallpaper fit mode is set automatically.
+* **Multiple Monitors (Windows):** each screen gets its own version of the wallpaper. On a screen with different proportions, such as a vertical one next to a landscape main screen, the image is enlarged to cover at least 60% of the screen, the sides are trimmed and the rest is blurred, instead of being zoomed in as far as "Fill" would.
 * **DWM Color Sync:** Extracts the dominant color from the wallpaper and applies it to the Windows interface (Dark Mode safe). Can be turned off in the settings.
 * **Multi-Source:** Cycles through NASA APOD (the picture of the day becomes your wallpaper at the first change after it is out, then the archive since 1995), NASA Library (without event and conference photos), ESA Hubble and Webb pictures of the week/month, the Wikimedia Commons picture of the day, the Bing image of the day, Unsplash and Pixabay (Nature/Space).
 * **Automatic Change:** optionally, the wallpaper changes on its own every N minutes (at least 15). It waits while the PC is locked or idle, so it does not download images nobody sees. A change takes about 2 seconds, a third of a second of CPU and 1–2 MB of download: even every 15 minutes the extra power draw stays below a hundredth of a watt.
@@ -72,6 +73,7 @@ KDE Plasma and XFCE support has not been tested on a real system yet: if it does
 
 Differences from Windows:
 * The accent color is not changed (on Linux it depends on the desktop theme).
+* With more than one screen, all screens show the same image, adapted to the main one.
 * The automatic change detects an idle PC on X11 and on GNOME under Wayland. On other Wayland desktops it cannot tell: it only pauses while the screen is locked, if the desktop reports it.
 * The system Python does not allow `pip install`, so the installer gets the dependencies from the distribution (apt, dnf, pacman or zypper) and asks for your password once.
 
